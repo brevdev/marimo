@@ -58,6 +58,18 @@ if [ -n "$REPO_URL" ]; then
         pip3 install -r "$HOME/$NOTEBOOKS_DIR/requirements.txt"
     fi
     
+    # Install gpu-burn for hardcore GPU stress testing (optional but recommended)
+    (echo ""; echo "##### Installing gpu-burn for advanced GPU stress testing #####"; echo "";)
+    cd "$HOME"
+    if [ ! -d "gpu-burn" ]; then
+        git clone https://github.com/wilicc/gpu-burn.git 2>/dev/null || true
+        if [ -d "gpu-burn" ]; then
+            cd gpu-burn
+            make 2>/dev/null || echo "Note: gpu-burn compilation skipped (requires CUDA development toolkit)"
+            cd "$HOME"
+        fi
+    fi
+    
     # Copy GPU validation notebook and other custom notebooks from this repo
     (echo ""; echo "##### Adding GPU validation notebook to notebooks directory #####"; echo "";)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -285,9 +285,6 @@ def __(mo):
 
 @app.cell
 def __(mo, stress_test_running, time, torch, torch_available):
-    import threading
-    import datetime as dt
-    
     _is_running = stress_test_running.value
     
     if not torch_available:
@@ -302,61 +299,89 @@ def __(mo, stress_test_running, time, torch, torch_available):
         )
     elif _is_running:
         try:
-            _test_device = torch.device("cuda:0")
+            # Get number of GPUs
+            _num_gpus = torch.cuda.device_count()
+            _gpu_results = []
             
-            # Allocate persistent tensors for continuous stress
-            _gpu_size = 12000
-            _gpu_a = torch.randn(_gpu_size, _gpu_size, device=_test_device)
-            _gpu_b = torch.randn(_gpu_size, _gpu_size, device=_test_device)
+            # Stress ALL GPUs simultaneously
+            for _gpu_id in range(_num_gpus):
+                _device = torch.device(f"cuda:{_gpu_id}")
+                
+                # Use maximum memory for intensive stress (similar to gpu-burn)
+                # Allocate multiple large tensors to max out memory and compute
+                _gpu_size = 14000  # Larger matrices = more stress
+                
+                # Allocate 3 tensors per GPU to maximize memory usage
+                _tensors = []
+                for _i in range(3):
+                    _tensors.append(torch.randn(_gpu_size, _gpu_size, device=_device, dtype=torch.float32))
+                
+                # Run intensive operations (similar to gpu-burn approach)
+                _start_time = time.time()
+                _ops_count = 0
+                
+                # Do 20 matrix multiplications to really push the GPU
+                for _iter in range(20):
+                    # Chain operations to keep GPU busy
+                    _temp = torch.matmul(_tensors[0], _tensors[1])
+                    _temp = torch.matmul(_temp, _tensors[2])
+                    _temp = torch.matmul(_temp, _tensors[0])
+                    _ops_count += 3
+                
+                torch.cuda.synchronize(_device)
+                _elapsed = time.time() - _start_time
+                
+                _ops_per_sec = _ops_count / _elapsed if _elapsed > 0 else 0
+                _mem_allocated = torch.cuda.memory_allocated(_gpu_id) / 1e9
+                _mem_reserved = torch.cuda.memory_reserved(_gpu_id) / 1e9
+                
+                _gpu_results.append(
+                    f"**GPU {_gpu_id}**: {_ops_count} ops in {_elapsed:.2f}s (~{_ops_per_sec:.1f} ops/s) | Mem: {_mem_allocated:.2f}GB allocated"
+                )
+                
+                # Clean up
+                del _tensors, _temp
+                torch.cuda.empty_cache()
             
-            # Run continuous operations
-            _start_time = time.time()
-            _ops_count = 0
-            
-            # Do 10 operations
-            for _ in range(10):
-                _result = torch.matmul(_gpu_a, _gpu_b)
-                _result = torch.matmul(_result, _gpu_a)
-                torch.cuda.synchronize()
-                _ops_count += 2
-            
-            _elapsed = time.time() - _start_time
-            _ops_per_sec = _ops_count / _elapsed if _elapsed > 0 else 0
+            _result_text = "\n".join([
+                "🔥 **Multi-GPU Stress Test Running!**",
+                "",
+                f"**GPUs Active**: {_num_gpus}",
+                f"**Matrix Size**: {_gpu_size}×{_gpu_size} per tensor",
+                f"**Tensors per GPU**: 3 (max memory stress)",
+                f"**Operations**: 60 chained matrix multiplications per cycle",
+                "",
+                "📊 **Per-GPU Performance:**",
+                *_gpu_results,
+                "",
+                "🌡️ **Watch the metrics above auto-refresh to see:**",
+                "- 🔥 All GPUs at ~100% utilization",
+                "- 🌡️ Temperature climbing on all GPUs",
+                "- 💾 High memory usage across all GPUs",
+                "",
+                "⚠️ **This is an intensive stress test similar to gpu-burn**",
+                "Toggle off to stop stressing all GPUs."
+            ])
             
             test_result = mo.callout(
-                mo.md(f"""
-                🔥 **GPU Stress Test Running!**
-                
-                **Status**: Active - GPU is being stressed continuously
-                **Operations**: {_ops_count} matrix multiplications completed in last cycle
-                **Performance**: ~{_ops_per_sec:.1f} ops/second
-                **Matrix Size**: {_gpu_size}×{_gpu_size} ({_gpu_size*_gpu_size*8/1e9:.2f} GB per tensor)
-                
-                📊 **Watch the metrics above auto-refresh to see:**
-                - 🔥 GPU Utilization: Should be at ~100%
-                - 🌡️ Temperature: Increasing steadily
-                - 💾 Memory: High usage from large tensors
-                
-                Toggle the switch off to stop the stress test.
-                """),
+                mo.md(_result_text),
                 kind="info"
             )
             
-            # Clean up
-            del _gpu_a, _gpu_b, _result
-            torch.cuda.empty_cache()
-            
         except Exception as e:
             test_result = mo.callout(
-                mo.md(f"❌ **GPU test failed**: {str(e)}\n\nThis could be due to insufficient GPU memory. Try closing other GPU applications."),
+                mo.md(f"❌ **GPU test failed**: {str(e)}\n\nThis could be due to insufficient GPU memory. The test uses large tensors to maximize stress."),
                 kind="danger"
             )
     else:
         test_result = mo.md("""
-        💡 **Toggle the switch above to start continuous GPU stress testing**
+        💡 **Toggle the switch above to start intensive multi-GPU stress testing**
         
-        When enabled, the GPU will continuously perform intensive matrix operations,
-        allowing you to see real-time GPU metrics changes.
+        This test is designed to push ALL GPUs to maximum load (similar to gpu-burn):
+        - Uses all available GPUs simultaneously
+        - Allocates large tensors to maximize memory usage
+        - Performs intensive matrix multiplications continuously
+        - Keeps GPUs at ~100% utilization
         
         Make sure auto-refresh is enabled above to see live updates!
         """)

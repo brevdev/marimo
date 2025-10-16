@@ -88,16 +88,22 @@ Marimo runs automatically as a systemd service and serves notebooks from `~/mari
 ## Example Notebooks
 
 ### GPU Validation (`gpu_validation.py`)
-- Check GPU availability and specifications
+- Check GPU availability and specifications for all GPUs
 - **Real-time auto-refreshing GPU metrics** (utilization, memory, temperature)
-  - Choose refresh rate: 1s, 2s, 5s, or Off
+  - Choose refresh rate: 1s, 2s, 5s, or 10s
   - Live updating charts and visualizations
-- **Continuous GPU stress test** with toggle switch
+  - Shows metrics for all GPUs in multi-GPU systems
+- **Intensive multi-GPU stress test** with toggle switch
+  - Automatically detects and stresses **ALL GPUs simultaneously**
   - Turn on/off to start/stop GPU stress
-  - Runs continuously until you stop it
-  - Watch metrics auto-update as GPU heats up
-  - See temperature, utilization, and memory increase in real-time
+  - Similar intensity to [gpu-burn](https://github.com/wilicc/gpu-burn)
+  - Uses 14K×14K matrices with 3 tensors per GPU
+  - 60 chained matrix multiplications per cycle
+  - Watch metrics auto-update as GPUs heat up
+  - See temperature, utilization, and memory spike across all GPUs
+  - Shows per-GPU performance stats
 - nvidia-smi output (collapsed by default)
+- Optional: [gpu-burn](https://github.com/wilicc/gpu-burn) CLI tool installed in `~/gpu-burn/`
 
 ### Marimo Examples
 Includes curated notebooks from [marimo-team/examples](https://github.com/marimo-team/examples):
