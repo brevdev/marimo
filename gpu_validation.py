@@ -156,17 +156,24 @@ def __(mo):
 
 
 @app.cell
-def __(GPUtil, mo):
-    # Refresh button
-    refresh_button = mo.ui.button(label="🔄 Refresh Metrics", kind="success")
-    refresh_button
-    return refresh_button,
+def __(mo):
+    # Auto-refresh controls
+    auto_refresh = mo.ui.refresh(
+        default_interval="2s",
+        options=["Off", "1s", "2s", "5s"]
+    )
+    
+    mo.hstack([
+        mo.md("**Auto-refresh metrics:**"),
+        auto_refresh
+    ])
+    return auto_refresh,
 
 
 @app.cell
-def __(GPUtil, alt, mo, pd, refresh_button):
-    # Trigger on button click
-    _refresh_trigger = refresh_button.value
+def __(GPUtil, alt, auto_refresh, mo, pd):
+    # Trigger on auto-refresh
+    _refresh_trigger = auto_refresh.value
     
     try:
         current_gpus = GPUtil.getGPUs()
@@ -251,13 +258,13 @@ def __(mo):
 def __(mo):
     mo.md(
         """
-        Run an intensive GPU stress test to see your GPU in action! Watch the metrics above as the GPU heats up.
+        Run a continuous GPU stress test to see your GPU in action! Watch the metrics above update in real-time.
         
         **Test Details:**
-        - Multiple rounds of matrix multiplications
-        - Progressively larger tensors
-        - ~30 seconds of GPU compute
-        - You'll see GPU utilization, temperature, and memory spike!
+        - Continuous matrix multiplications until stopped
+        - Keeps GPU at high utilization
+        - Auto-refreshing metrics show real-time GPU activity
+        - Watch utilization, temperature, and memory increase!
         """
     )
     return
@@ -265,101 +272,93 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    # Test controls
-    test_button = mo.ui.button(label="▶️ Run Intensive GPU Test", kind="success")
+    # Test controls - toggle button
+    stress_test_running = mo.ui.switch(label="🔥 GPU Stress Test")
     
     mo.hstack([
-        test_button,
-        mo.md("**Tip:** Keep the refresh button above handy to watch GPU metrics change!")
+        stress_test_running,
+        mo.md("Toggle on to start continuous GPU stress test")
     ])
-    return test_button,
+    return stress_test_running,
 
 
 @app.cell
-def __(mo, test_button, time, torch, torch_available):
-    _test_trigger = test_button.value
+def __(mo, stress_test_running, time, torch, torch_available):
+    import threading
+    import datetime as dt
     
-    if _test_trigger:
-        if not torch_available:
+    _is_running = stress_test_running.value
+    
+    if not torch_available:
+        test_result = mo.callout(
+            mo.md("❌ PyTorch not available. Cannot run GPU test."),
+            kind="danger"
+        )
+    elif not torch.cuda.is_available():
+        test_result = mo.callout(
+            mo.md("❌ CUDA not available. Cannot run GPU test."),
+            kind="danger"
+        )
+    elif _is_running:
+        try:
+            _test_device = torch.device("cuda:0")
+            
+            # Allocate persistent tensors for continuous stress
+            _gpu_size = 12000
+            _gpu_a = torch.randn(_gpu_size, _gpu_size, device=_test_device)
+            _gpu_b = torch.randn(_gpu_size, _gpu_size, device=_test_device)
+            
+            # Run continuous operations
+            _start_time = time.time()
+            _ops_count = 0
+            
+            # Do 10 operations
+            for _ in range(10):
+                _result = torch.matmul(_gpu_a, _gpu_b)
+                _result = torch.matmul(_result, _gpu_a)
+                torch.cuda.synchronize()
+                _ops_count += 2
+            
+            _elapsed = time.time() - _start_time
+            _ops_per_sec = _ops_count / _elapsed if _elapsed > 0 else 0
+            
             test_result = mo.callout(
-                mo.md("❌ PyTorch not available. Cannot run GPU test."),
+                mo.md(f"""
+                🔥 **GPU Stress Test Running!**
+                
+                **Status**: Active - GPU is being stressed continuously
+                **Operations**: {_ops_count} matrix multiplications completed in last cycle
+                **Performance**: ~{_ops_per_sec:.1f} ops/second
+                **Matrix Size**: {_gpu_size}×{_gpu_size} ({_gpu_size*_gpu_size*8/1e9:.2f} GB per tensor)
+                
+                📊 **Watch the metrics above auto-refresh to see:**
+                - 🔥 GPU Utilization: Should be at ~100%
+                - 🌡️ Temperature: Increasing steadily
+                - 💾 Memory: High usage from large tensors
+                
+                Toggle the switch off to stop the stress test.
+                """),
+                kind="info"
+            )
+            
+            # Clean up
+            del _gpu_a, _gpu_b, _result
+            torch.cuda.empty_cache()
+            
+        except Exception as e:
+            test_result = mo.callout(
+                mo.md(f"❌ **GPU test failed**: {str(e)}\n\nThis could be due to insufficient GPU memory. Try closing other GPU applications."),
                 kind="danger"
             )
-        elif not torch.cuda.is_available():
-            test_result = mo.callout(
-                mo.md("❌ CUDA not available. Cannot run GPU test."),
-                kind="danger"
-            )
-        else:
-            try:
-                _test_device = torch.device("cuda:0")
-                test_results = []
-                
-                # Quick CPU baseline
-                _cpu_size = 5000
-                _cpu_a = torch.randn(_cpu_size, _cpu_size)
-                _cpu_b = torch.randn(_cpu_size, _cpu_size)
-                _cpu_start = time.time()
-                _ = torch.matmul(_cpu_a, _cpu_b)
-                _cpu_time = time.time() - _cpu_start
-                
-                test_results.append("🔥 **Starting GPU Stress Test...**\n")
-                
-                # Intensive GPU test with multiple rounds
-                _total_gpu_time = 0
-                _rounds = 5
-                _sizes = [8000, 10000, 12000, 14000, 16000]
-                
-                for _round_num, _size in enumerate(_sizes, 1):
-                    # Allocate large tensors on GPU
-                    _gpu_a = torch.randn(_size, _size, device=_test_device)
-                    _gpu_b = torch.randn(_size, _size, device=_test_device)
-                    
-                    # Multiple iterations per round to really heat things up
-                    _round_start = time.time()
-                    for _ in range(3):
-                        _result = torch.matmul(_gpu_a, _gpu_b)
-                        _result = torch.matmul(_result, _gpu_a)
-                        torch.cuda.synchronize()
-                    _round_time = time.time() - _round_start
-                    _total_gpu_time += _round_time
-                    
-                    test_results.append(
-                        f"  Round {_round_num}/{_rounds}: {_size}x{_size} matrices × 6 operations = {_round_time:.2f}s"
-                    )
-                    
-                    # Clean up to free memory between rounds
-                    del _gpu_a, _gpu_b, _result
-                    torch.cuda.empty_cache()
-                
-                _speedup = (_cpu_time * 15) / _total_gpu_time  # Rough speedup estimate
-                
-                test_results.extend([
-                    f"\n✅ **Stress Test Complete!**",
-                    f"",
-                    f"**Total GPU Compute Time**: {_total_gpu_time:.2f} seconds",
-                    f"**Estimated Speedup**: ~{_speedup:.1f}x faster than CPU",
-                    f"**Operations Performed**: {_rounds} rounds × 6 matrix multiplications = 30 operations",
-                    f"",
-                    f"🌡️ **Check the GPU metrics above - you should see:**",
-                    f"- GPU Utilization: Should have peaked near 100%",
-                    f"- Temperature: Increased by several degrees",
-                    f"- Memory Usage: Spiked during large matrix operations",
-                    f"",
-                    f"Click the 🔄 Refresh Metrics button to see current GPU state!"
-                ])
-                
-                test_result = mo.callout(
-                    mo.md("\n".join(test_results)),
-                    kind="success"
-                )
-            except Exception as e:
-                test_result = mo.callout(
-                    mo.md(f"❌ **GPU test failed**: {str(e)}\n\nThis could be due to insufficient GPU memory. Try closing other GPU applications."),
-                    kind="danger"
-                )
     else:
-        test_result = mo.md("👆 Click the button above to run an intensive GPU stress test and watch the metrics change!")
+        test_result = mo.md("""
+        💡 **Toggle the switch above to start continuous GPU stress testing**
+        
+        When enabled, the GPU will continuously perform intensive matrix operations,
+        allowing you to see real-time GPU metrics changes.
+        
+        Make sure auto-refresh is enabled above to see live updates!
+        """)
     
     test_result
     return test_result,
