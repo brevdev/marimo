@@ -21,10 +21,13 @@ Automated setup script to install Marimo on Brev with example notebooks from [ma
 3. **After workspace is ready, Marimo will be running automatically!**
    
    Access Marimo at `http://localhost:8080` (or your Brev workspace URL on port 8080)
+   
+   **Note:** Password authentication is disabled by default for ease of use.
 
 The setup script automatically:
 - Installs Marimo
 - Clones the [marimo-team/examples](https://github.com/marimo-team/examples) repository with curated example notebooks
+- Installs common Python packages for data science and visualization
 - Sets up Marimo as a systemd service that starts automatically and restarts on failure
 
 ## Configuration
@@ -59,9 +62,16 @@ The setup script:
 1. Installs Marimo via pip
 2. Updates PATH in `.bashrc` and `.zshrc`
 3. Clones the marimo-team/examples repository (or your custom repo if `MARIMO_REPO_URL` is set)
-4. Installs dependencies from `requirements.txt` (if present)
-5. Creates and starts a systemd service to run Marimo automatically
-6. Creates `~/start-marimo.sh` helper script for manual runs
+4. Installs common Python packages for data science and marimo examples:
+   - Data manipulation: `polars`, `pandas`, `numpy`, `scipy`, `pyarrow`
+   - Visualization: `altair`, `plotly`, `matplotlib`, `seaborn`
+   - Machine learning: `scikit-learn`
+   - AI/LLM: `openai`, `anthropic`
+   - Database: `marimo[sql]`, `duckdb`, `sqlalchemy`
+   - Utilities: `requests`, `beautifulsoup4`, `pillow`
+5. Installs additional dependencies from `requirements.txt` (if present in the notebooks directory)
+6. Creates and starts a systemd service to run Marimo automatically (without password authentication)
+7. Creates `~/start-marimo.sh` helper script for manual runs
 
 ## Service Management
 

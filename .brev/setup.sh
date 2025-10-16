@@ -32,9 +32,31 @@ if [ -n "$REPO_URL" ]; then
     cd "$HOME"
     git clone "$REPO_URL" "$NOTEBOOKS_DIR"
     
+    # Install common packages for marimo examples
+    (echo ""; echo "##### Installing common packages for marimo examples #####"; echo "";)
+    pip3 install --upgrade \
+        polars \
+        altair \
+        plotly \
+        pandas \
+        numpy \
+        scipy \
+        scikit-learn \
+        matplotlib \
+        seaborn \
+        pyarrow \
+        openai \
+        anthropic \
+        requests \
+        beautifulsoup4 \
+        pillow \
+        'marimo[sql]' \
+        duckdb \
+        sqlalchemy
+    
     # Install dependencies if requirements.txt exists
     if [ -f "$HOME/$NOTEBOOKS_DIR/requirements.txt" ]; then
-        (echo ""; echo "##### Installing dependencies #####"; echo "";)
+        (echo ""; echo "##### Installing additional dependencies from requirements.txt #####"; echo "";)
         pip3 install -r "$HOME/$NOTEBOOKS_DIR/requirements.txt"
     fi
 fi
@@ -45,7 +67,7 @@ cat > "$HOME/start-marimo.sh" << 'EOF'
 #!/bin/bash
 export PATH="$HOME/.local/bin:$PATH"
 cd "$HOME/${MARIMO_NOTEBOOKS_DIR:-marimo-examples}" 2>/dev/null || cd "$HOME"
-marimo edit --host 0.0.0.0 --port ${MARIMO_PORT:-8080} --headless
+marimo edit --host 0.0.0.0 --port ${MARIMO_PORT:-8080} --headless --no-token
 EOF
 chmod +x "$HOME/start-marimo.sh"
 
@@ -63,7 +85,7 @@ WorkingDirectory=$HOME/$NOTEBOOKS_DIR
 Environment="PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin"
 Environment="HOME=$HOME"
 Environment="MARIMO_PORT=${MARIMO_PORT:-8080}"
-ExecStart=/usr/local/bin/marimo edit --host 0.0.0.0 --port \${MARIMO_PORT} --headless
+ExecStart=/usr/local/bin/marimo edit --host 0.0.0.0 --port \${MARIMO_PORT} --headless --no-token
 Restart=always
 RestartSec=10
 StandardOutput=journal
