@@ -4,11 +4,12 @@ Automated setup script to install Marimo on Brev with example notebooks from [ma
 
 ## Quick Start
 
-1. **Copy the setup script to your repo:**
+1. **Add the setup script to your repo:**
    ```bash
-   mkdir -p .brev
-   cp setup.sh .brev/setup.sh
-   git add .brev/setup.sh
+   # Download the setup script
+   curl -O https://raw.githubusercontent.com/brevdev/marimo/main/setup.sh
+   chmod +x setup.sh
+   git add setup.sh
    git commit -m "Add Marimo setup"
    git push
    ```
