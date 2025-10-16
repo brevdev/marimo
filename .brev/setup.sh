@@ -49,6 +49,43 @@ marimo edit --host 0.0.0.0 --port ${MARIMO_PORT:-8080} --headless
 EOF
 chmod +x "$HOME/start-marimo.sh"
 
+##### Create systemd service for Marimo #####
+(echo ""; echo "##### Setting up Marimo systemd service #####"; echo "";)
+sudo tee /etc/systemd/system/marimo.service > /dev/null << EOF
+[Unit]
+Description=Marimo Notebook Server
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME/$NOTEBOOKS_DIR
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin"
+Environment="HOME=$HOME"
+Environment="MARIMO_PORT=${MARIMO_PORT:-8080}"
+ExecStart=/usr/local/bin/marimo edit --host 0.0.0.0 --port \${MARIMO_PORT} --headless
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=marimo
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+##### Enable and start Marimo service #####
+(echo ""; echo "##### Enabling and starting Marimo service #####"; echo "";)
+sudo systemctl daemon-reload
+sudo systemctl enable marimo.service
+sudo systemctl start marimo.service
+
+# Wait a moment for service to start
+sleep 3
+
+# Check service status
+sudo systemctl status marimo.service --no-pager || true
+
 ##### Fix ownership if running as root #####
 if [ "$(id -u)" -eq 0 ] && [ -n "$USER" ]; then
     (echo ""; echo "##### Fixing file ownership #####"; echo "";)
@@ -59,4 +96,10 @@ if [ "$(id -u)" -eq 0 ] && [ -n "$USER" ]; then
 fi
 
 (echo ""; echo "##### Setup complete! #####"; echo "";)
-(echo "To start Marimo, run: ~/start-marimo.sh"; echo "";)
+(echo "Marimo is now running as a systemd service on port ${MARIMO_PORT:-8080}"; echo "";)
+(echo "Service management commands:"; echo "";)
+(echo "  - Check status:  sudo systemctl status marimo"; echo "";)
+(echo "  - View logs:     sudo journalctl -u marimo -f"; echo "";)
+(echo "  - Restart:       sudo systemctl restart marimo"; echo "";)
+(echo "  - Stop:          sudo systemctl stop marimo"; echo "";)
+(echo ""; echo "You can also run Marimo manually with: ~/start-marimo.sh"; echo "";)

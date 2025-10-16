@@ -18,14 +18,14 @@ Automated setup script to install Marimo on Brev with example notebooks from [ma
    brev start https://github.com/your-org/your-repo
    ```
 
-3. **After workspace is ready, start Marimo:**
-   ```bash
-   ~/start-marimo.sh
-   ```
+3. **After workspace is ready, Marimo will be running automatically!**
+   
+   Access Marimo at `http://localhost:8080` (or your Brev workspace URL on port 8080)
 
-Access Marimo at `http://localhost:8080`
-
-The script automatically clones the [marimo-team/examples](https://github.com/marimo-team/examples) repository with curated example notebooks for data science, machine learning, and AI workflows.
+The setup script automatically:
+- Installs Marimo
+- Clones the [marimo-team/examples](https://github.com/marimo-team/examples) repository with curated example notebooks
+- Sets up Marimo as a systemd service that starts automatically and restarts on failure
 
 ## Configuration
 
@@ -60,28 +60,73 @@ The setup script:
 2. Updates PATH in `.bashrc` and `.zshrc`
 3. Clones the marimo-team/examples repository (or your custom repo if `MARIMO_REPO_URL` is set)
 4. Installs dependencies from `requirements.txt` (if present)
-5. Creates `~/start-marimo.sh` helper script
+5. Creates and starts a systemd service to run Marimo automatically
+6. Creates `~/start-marimo.sh` helper script for manual runs
+
+## Service Management
+
+Marimo runs as a systemd service and starts automatically on boot:
+
+```bash
+# Check service status
+sudo systemctl status marimo
+
+# View logs in real-time
+sudo journalctl -u marimo -f
+
+# Restart the service
+sudo systemctl restart marimo
+
+# Stop the service
+sudo systemctl stop marimo
+
+# Start the service
+sudo systemctl start marimo
+```
 
 ## Troubleshooting
 
-**Marimo not found:**
+**Service not running:**
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-source ~/.bashrc
+# Check service status
+sudo systemctl status marimo
+
+# View service logs
+sudo journalctl -u marimo -n 50
+
+# Restart the service
+sudo systemctl restart marimo
 ```
 
-**Can't access on port 8080:**
+**Can't access Marimo on port 8080:**
 ```bash
-MARIMO_PORT=8081 ~/start-marimo.sh
+# Check if marimo is listening
+sudo netstat -tlnp | grep 8080
+# or
+sudo ss -tlnp | grep 8080
+
+# Check service logs for errors
+sudo journalctl -u marimo -f
+```
+
+**Marimo command not found:**
+```bash
+# Check installation
+which marimo
+pip3 list | grep marimo
+
+# Add to PATH manually
+export PATH="$HOME/.local/bin:$PATH"
+source ~/.bashrc
 ```
 
 **Notebooks not loading:**
 ```bash
 # Check if clone succeeded
-ls $MARIMO_NOTEBOOKS_DIR
+ls ~/marimo-examples/
 
 # Check setup logs
-cat .brev/logs/setup.log
+cat ~/.lifecycle-script-*.log
 ```
 
 ## Resources
