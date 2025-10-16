@@ -66,9 +66,10 @@ The setup script:
    - Data manipulation: `polars`, `pandas`, `numpy`, `scipy`, `pyarrow`
    - Visualization: `altair`, `plotly`, `matplotlib`, `seaborn`
    - Machine learning: `scikit-learn`
-   - AI/LLM: `openai`, `anthropic`
+   - AI/LLM: `openai`, `anthropic`, `instructor`, `openai-whisper`
    - Database: `marimo[sql]`, `duckdb`, `sqlalchemy`
-   - Utilities: `requests`, `beautifulsoup4`, `pillow`
+   - Media processing: `opencv-python`, `yt-dlp`
+   - Utilities: `requests`, `beautifulsoup4`, `pillow`, `python-dotenv`, `mohtml`, `wigglystuff`
 5. Installs additional dependencies from `requirements.txt` (if present in the notebooks directory)
 6. Creates and starts a systemd service to run Marimo automatically (without password authentication)
 7. Creates `~/start-marimo.sh` helper script for manual runs

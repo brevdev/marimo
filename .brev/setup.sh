@@ -52,7 +52,14 @@ if [ -n "$REPO_URL" ]; then
         pillow \
         'marimo[sql]' \
         duckdb \
-        sqlalchemy
+        sqlalchemy \
+        instructor \
+        mohtml \
+        openai-whisper \
+        opencv-python \
+        python-dotenv \
+        wigglystuff \
+        yt-dlp
     
     # Install dependencies if requirements.txt exists
     if [ -f "$HOME/$NOTEBOOKS_DIR/requirements.txt" ]; then
