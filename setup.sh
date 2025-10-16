@@ -39,6 +39,12 @@ if [ -n "$REPO_URL" ]; then
     cd "$HOME"
     git clone "$REPO_URL" "$NOTEBOOKS_DIR"
     
+    # Copy GPU validation notebook if it exists in the repo
+    if [ -f "/workspace/gpu_validation.py" ]; then
+        (echo ""; echo "##### Copying GPU validation notebook #####"; echo "";)
+        cp /workspace/gpu_validation.py "$HOME/$NOTEBOOKS_DIR/gpu_validation.py"
+    fi
+    
     # Install common packages for marimo examples
     (echo ""; echo "##### Installing common packages for marimo examples #####"; echo "";)
     pip3 install --upgrade \
@@ -66,7 +72,14 @@ if [ -n "$REPO_URL" ]; then
         opencv-python \
         python-dotenv \
         wigglystuff \
-        yt-dlp
+        yt-dlp \
+        psutil \
+        pynvml \
+        GPUtil
+    
+    # Install PyTorch with CUDA support
+    (echo ""; echo "##### Installing PyTorch with CUDA support #####"; echo "";)
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     
     # Install dependencies if requirements.txt exists
     if [ -f "$HOME/$NOTEBOOKS_DIR/requirements.txt" ]; then

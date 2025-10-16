@@ -1,39 +1,96 @@
-# Marimo Setup for Brev
+# Marimo for GPU Experimentation on Brev
 
-Automated setup script to install Marimo on Brev with example notebooks from [marimo-team/examples](https://github.com/marimo-team/examples).
+Run interactive Python notebooks with **Marimo** on high-performance **NVIDIA GPU instances** powered by Brev. Perfect for AI/ML experimentation, model training, and data science workflows that require GPU acceleration.
 
-## Quick Start
+## What is Marimo?
 
-1. **Add the setup script to your repo:**
-   ```bash
-   # Download the setup script
-   curl -O https://raw.githubusercontent.com/brevdev/marimo/main/setup.sh
-   chmod +x setup.sh
-   git add setup.sh
-   git commit -m "Add Marimo setup"
-   git push
-   ```
+[Marimo](https://marimo.io) is a modern, reactive Python notebook that runs as an interactive web app. Unlike traditional notebooks:
 
-2. **Start a Brev workspace:**
-   ```bash
-   brev start https://github.com/your-org/your-repo
-   ```
+- 🔄 **Reactive** - Cells automatically re-run when dependencies change
+- 🐍 **Pure Python** - Notebooks are `.py` files that can be versioned and imported
+- 🚀 **Production-ready** - Deploy notebooks as apps with a single command
+- 🎨 **Interactive** - Rich UI components and real-time visualizations
+- 🔒 **Reproducible** - No hidden state, guaranteed execution order
 
-3. **After workspace is ready, Marimo will be running automatically!**
-   
-   Access Marimo at `http://localhost:8080` (or your Brev workspace URL on port 8080)
-   
-   **Note:** Password authentication is disabled by default for ease of use.
+## Why Marimo + GPU on Brev?
 
-The setup script automatically:
-- Installs Marimo
-- Clones the [marimo-team/examples](https://github.com/marimo-team/examples) repository with curated example notebooks
-- Installs common Python packages for data science and visualization
-- Sets up Marimo as a systemd service that starts automatically and restarts on failure
+- **Instant GPU Access** - Launch NVIDIA GPU instances in seconds with one click
+- **Pre-configured Environment** - Python, CUDA drivers, and ML libraries ready to go
+- **Cost Effective** - Pay only for what you use with per-second billing
+- **Powerful Hardware** - Access to L40S, A100, H100, and other high-end GPUs
+- **Interactive Development** - Experiment with models and visualize results in real-time
 
-## Configuration
+Perfect for:
+- Training and fine-tuning ML models
+- Running inference at scale
+- Computer vision and image processing
+- LLM experimentation and deployment
+- Data analysis with GPU-accelerated libraries
 
-Set these environment variables in your Brev workspace or shell to customize:
+## 🚀 Quick Deploy - GPU Launchables
+
+Deploy Marimo with GPU access instantly using these pre-configured environments:
+
+| GPU Configuration | vRAM | Use Case | Deploy |
+|-------------------|------|----------|--------|
+| **1x L40S** | 48GB | General ML, Training, Inference | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AI5Pvj2cwyqzv50io8WJBpK4t) |
+
+### What's Included
+
+Each deployment includes:
+- ✅ Marimo notebook server (running on port 8080)
+- ✅ NVIDIA GPU drivers and CUDA toolkit
+- ✅ GPU validation notebook
+- ✅ Example notebooks from [marimo-team/examples](https://github.com/marimo-team/examples)
+- ✅ Pre-installed ML/AI libraries (PyTorch, TensorFlow, etc.)
+- ✅ Data science toolkit (pandas, numpy, polars, altair, plotly)
+- ✅ No password authentication for ease of use
+
+## Getting Started
+
+After deploying a launchable:
+
+1. **Wait for deployment** - The environment will be ready in 2-3 minutes
+2. **Access Marimo** - Navigate to port 8080 in your browser
+3. **Validate GPU** - Open the `gpu_validation.py` notebook to check your GPU
+4. **Start experimenting** - Explore example notebooks or create your own
+
+## Example Notebooks
+
+### GPU Validation (`gpu_validation.py`)
+- Check GPU availability and specifications
+- Monitor GPU utilization, memory, and temperature
+- Visualize GPU performance metrics
+- Run basic GPU compute tests
+
+### Marimo Examples
+Includes curated notebooks from [marimo-team/examples](https://github.com/marimo-team/examples):
+- LLM and AI workflows
+- Data visualization
+- Interactive dashboards
+- SQL and database integration
+- And more...
+
+## Advanced Usage
+
+### Service Management
+
+Marimo runs as a systemd service and starts automatically:
+
+```bash
+# Check service status
+sudo systemctl status marimo
+
+# View logs
+sudo journalctl -u marimo -f
+
+# Restart the service
+sudo systemctl restart marimo
+```
+
+### Customization
+
+Set these environment variables before running the setup script:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -43,106 +100,73 @@ Set these environment variables in your Brev workspace or shell to customize:
 
 ### Use Your Own Notebooks
 
-To use your own notebooks repository instead of the examples:
-
 ```bash
 export MARIMO_REPO_URL="https://github.com/your-username/your-notebooks.git"
+bash setup.sh
 ```
 
-### Skip Cloning Entirely
+### Pre-installed Packages
 
-To install Marimo without cloning any repository:
-
-```bash
-export MARIMO_REPO_URL=""
-```
-
-## What It Does
-
-The setup script:
-1. Installs Python and pip3 if not already available
-2. Installs Marimo via pip
-3. Updates PATH in `.bashrc` and `.zshrc`
-4. Clones the marimo-team/examples repository (or your custom repo if `MARIMO_REPO_URL` is set)
-5. Installs common Python packages for data science and marimo examples:
-   - Data manipulation: `polars`, `pandas`, `numpy`, `scipy`, `pyarrow`
-   - Visualization: `altair`, `plotly`, `matplotlib`, `seaborn`
-   - Machine learning: `scikit-learn`
-   - AI/LLM: `openai`, `anthropic`, `instructor`, `openai-whisper`
-   - Database: `marimo[sql]`, `duckdb`, `sqlalchemy`
-   - Media processing: `opencv-python`, `yt-dlp`
-   - Utilities: `requests`, `beautifulsoup4`, `pillow`, `python-dotenv`, `mohtml`, `wigglystuff`
-6. Installs additional dependencies from `requirements.txt` (if present in the notebooks directory)
-7. Creates and starts a systemd service to run Marimo automatically (without password authentication)
-8. Creates `~/start-marimo.sh` helper script for manual runs
-
-## Service Management
-
-Marimo runs as a systemd service and starts automatically on boot:
-
-```bash
-# Check service status
-sudo systemctl status marimo
-
-# View logs in real-time
-sudo journalctl -u marimo -f
-
-# Restart the service
-sudo systemctl restart marimo
-
-# Stop the service
-sudo systemctl stop marimo
-
-# Start the service
-sudo systemctl start marimo
-```
+The environment includes:
+- **Data manipulation**: `polars`, `pandas`, `numpy`, `scipy`, `pyarrow`
+- **Visualization**: `altair`, `plotly`, `matplotlib`, `seaborn`
+- **Machine learning**: `scikit-learn`, `torch`, `tensorflow`
+- **AI/LLM**: `openai`, `anthropic`, `instructor`, `openai-whisper`
+- **Database**: `marimo[sql]`, `duckdb`, `sqlalchemy`
+- **Media processing**: `opencv-python`, `yt-dlp`
+- **Utilities**: `requests`, `beautifulsoup4`, `pillow`, `python-dotenv`
 
 ## Troubleshooting
 
-**Service not running:**
+### Service Issues
 ```bash
 # Check service status
 sudo systemctl status marimo
 
-# View service logs
+# View logs
 sudo journalctl -u marimo -n 50
 
-# Restart the service
+# Restart
 sudo systemctl restart marimo
 ```
 
-**Can't access Marimo on port 8080:**
+### GPU Not Detected
 ```bash
-# Check if marimo is listening
-sudo netstat -tlnp | grep 8080
-# or
-sudo ss -tlnp | grep 8080
+# Check NVIDIA driver
+nvidia-smi
 
-# Check service logs for errors
-sudo journalctl -u marimo -f
+# Check CUDA
+nvcc --version
+
+# Verify PyTorch GPU access
+python3 -c "import torch; print(torch.cuda.is_available())"
 ```
 
-**Marimo command not found:**
+### Can't Access Marimo
+- Ensure port 8080 is open in your firewall
+- Check if marimo is running: `sudo systemctl status marimo`
+- View logs for errors: `sudo journalctl -u marimo -f`
+
+## Manual Setup
+
+If you want to use this setup script in your own repo:
+
 ```bash
-# Check installation
-which marimo
-pip3 list | grep marimo
+# Download the setup script
+curl -O https://raw.githubusercontent.com/brevdev/marimo/main/setup.sh
+chmod +x setup.sh
 
-# Add to PATH manually
-export PATH="$HOME/.local/bin:$PATH"
-source ~/.bashrc
-```
-
-**Notebooks not loading:**
-```bash
-# Check if clone succeeded
-ls ~/marimo-examples/
-
-# Check setup logs
-cat ~/.lifecycle-script-*.log
+# Run it
+bash setup.sh
 ```
 
 ## Resources
 
 - [Marimo Documentation](https://docs.marimo.io)
+- [Marimo Examples](https://github.com/marimo-team/examples)
 - [Brev Documentation](https://docs.brev.dev)
+- [NVIDIA GPU Cloud](https://catalog.ngc.nvidia.com/)
+
+## Contributing
+
+Have ideas for improving this setup or want to add more GPU examples? Contributions are welcome! Open an issue or submit a PR at [github.com/brevdev/marimo](https://github.com/brevdev/marimo).
