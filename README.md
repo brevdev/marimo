@@ -59,10 +59,11 @@ export MARIMO_REPO_URL=""
 ## What It Does
 
 The setup script:
-1. Installs Marimo via pip
-2. Updates PATH in `.bashrc` and `.zshrc`
-3. Clones the marimo-team/examples repository (or your custom repo if `MARIMO_REPO_URL` is set)
-4. Installs common Python packages for data science and marimo examples:
+1. Installs Python and pip3 if not already available
+2. Installs Marimo via pip
+3. Updates PATH in `.bashrc` and `.zshrc`
+4. Clones the marimo-team/examples repository (or your custom repo if `MARIMO_REPO_URL` is set)
+5. Installs common Python packages for data science and marimo examples:
    - Data manipulation: `polars`, `pandas`, `numpy`, `scipy`, `pyarrow`
    - Visualization: `altair`, `plotly`, `matplotlib`, `seaborn`
    - Machine learning: `scikit-learn`
@@ -70,9 +71,9 @@ The setup script:
    - Database: `marimo[sql]`, `duckdb`, `sqlalchemy`
    - Media processing: `opencv-python`, `yt-dlp`
    - Utilities: `requests`, `beautifulsoup4`, `pillow`, `python-dotenv`, `mohtml`, `wigglystuff`
-5. Installs additional dependencies from `requirements.txt` (if present in the notebooks directory)
-6. Creates and starts a systemd service to run Marimo automatically (without password authentication)
-7. Creates `~/start-marimo.sh` helper script for manual runs
+6. Installs additional dependencies from `requirements.txt` (if present in the notebooks directory)
+7. Creates and starts a systemd service to run Marimo automatically (without password authentication)
+8. Creates `~/start-marimo.sh` helper script for manual runs
 
 ## Service Management
 

@@ -17,6 +17,13 @@ USER="${USER:-ubuntu}"
 REPO_URL="${MARIMO_REPO_URL:-https://github.com/marimo-team/examples.git}"
 NOTEBOOKS_DIR="${MARIMO_NOTEBOOKS_DIR:-marimo-examples}"
 
+##### Install Python and pip if not available #####
+if ! command -v pip3 &> /dev/null; then
+    (echo ""; echo "##### Installing Python and pip3 #####"; echo "";)
+    sudo apt-get update
+    sudo apt-get install -y python3 python3-pip python3-venv
+fi
+
 ##### Install Marimo #####
 (echo ""; echo "##### Installing Marimo #####"; echo "";)
 pip3 install --upgrade marimo
