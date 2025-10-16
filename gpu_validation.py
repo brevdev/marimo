@@ -159,14 +159,14 @@ def __(mo):
 def __(mo):
     # Auto-refresh controls
     auto_refresh = mo.ui.refresh(
-        default_interval="2000ms",
-        options=["Off", "1000ms", "2000ms", "5000ms"]
+        default_interval="2s",
+        options=["1s", "2s", "5s", "10s"]
     )
     
     mo.hstack([
         mo.md("**Auto-refresh metrics:**"),
         auto_refresh,
-        mo.md("*(1s, 2s, or 5s intervals)*")
+        mo.md("*(Choose refresh interval - uncheck to disable)*")
     ])
     return auto_refresh,
 
