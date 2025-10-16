@@ -48,12 +48,28 @@ Each deployment includes:
 
 ## Getting Started
 
-After deploying a launchable:
+### Deploying Your Environment
 
-1. **Wait for deployment** - The environment will be ready in 2-3 minutes
-2. **Access Marimo** - Navigate to port 8080 in your browser
-3. **Validate GPU** - Open the `gpu_validation.py` notebook to check your GPU
-4. **Start experimenting** - Explore example notebooks or create your own
+1. **Choose your GPU configuration** - Click the **Deploy Now** button for your desired environment from the table above
+2. **Review and deploy** - On the launchable page, click **Deploy Launchable** 
+3. **Sign in** - Create an account or log in to Brev with your email (NVIDIA account required)
+4. **Monitor deployment** - Click **Go to Instance Page** to watch your environment spin up
+5. **Wait for completion** - Watch for three green status indicators:
+   - ✅ **Running** - Instance is live
+   - ✅ **Built** - Environment setup complete
+   - ✅ **Completed** - Post-install script finished (typically 2-3 minutes)
+6. **Access Marimo** - Navigate to the **Access** tab and click the secure link for port 8080
+7. **Authenticate** - Log in to Marimo using your Brev account email
+8. **Start building** - You're ready to experiment with GPU-accelerated notebooks!
+
+### First Steps
+
+Once inside Marimo:
+
+1. **Validate GPU** - Open `gpu_validation.py` to verify your GPU is detected and working
+2. **Run the benchmark** - Click the GPU test button to see CPU vs GPU performance
+3. **Explore examples** - Browse the `marimo-examples` directory for inspiration
+4. **Create your own** - Click **Create a new notebook** to start experimenting
 
 ## Example Notebooks
 
