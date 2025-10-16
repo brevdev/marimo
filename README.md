@@ -180,8 +180,8 @@ bash setup.sh
 
 - [Marimo Documentation](https://docs.marimo.io)
 - [Marimo Examples](https://github.com/marimo-team/examples)
-- [Brev Documentation](https://docs.brev.dev)
-- [NVIDIA GPU Cloud](https://catalog.ngc.nvidia.com/)
+- [Brev Documentation](https://docs.nvidia.com/brev)
+- [NVIDIA NGC](https://catalog.ngc.nvidia.com/)
 
 ## Contributing
 
