@@ -14,10 +14,10 @@ Run interactive Python notebooks with **Marimo** on high-performance **NVIDIA GP
 
 ## Why Marimo + GPU on Brev?
 
-- **Instant GPU Access** - Launch NVIDIA GPU instances in seconds with one click
+- **Instant GPU Access** - Launch NVIDIA GPU instances with one click
 - **Pre-configured Environment** - Python, CUDA drivers, and ML libraries ready to go
-- **Cost Effective** - Pay only for what you use with per-second billing
-- **Powerful Hardware** - Access to L40S, A100, H100, and other high-end GPUs
+- **Cost Effective** - Pay only for what you use
+- **Powerful Hardware** - Access to L40S, H100, H200, B200 and other high-end GPUs
 - **Interactive Development** - Experiment with models and visualize results in real-time
 
 Perfect for:
@@ -68,8 +68,22 @@ Once inside Marimo:
 
 1. **Validate GPU** - Open `gpu_validation.py` to verify your GPU is detected and working
 2. **Run the benchmark** - Click the GPU test button to see CPU vs GPU performance
-3. **Explore examples** - Browse the `marimo-examples` directory for inspiration
+3. **Explore examples** - Browse the notebook directory for inspiration
 4. **Create your own** - Click **Create a new notebook** to start experimenting
+
+### Environment Layout
+
+After deployment, your environment will be organized as follows:
+
+```
+~/marimo-examples/           # All notebooks (examples + GPU validation)
+  ├── gpu_validation.py      # GPU testing and monitoring notebook
+  ├── youtube_summary/       # Example: YouTube video summarization
+  ├── nlp_span_comparison/   # Example: NLP analysis
+  └── ...                    # More example notebooks
+```
+
+Marimo runs automatically as a systemd service and serves notebooks from `~/marimo-examples/`.
 
 ## Example Notebooks
 
