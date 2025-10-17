@@ -38,6 +38,7 @@ Deploy Marimo with GPU access instantly using these pre-configured environments:
 | **2x A100 80GB** | 160GB | Multi-GPU Training, Model Parallelism, Distributed Workloads | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AvYjrbnA3lZbmW8sN29ZqGFAF) |
 | **4x A100 80GB** | 320GB | Advanced Distributed Training, Large Model Development | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34Avm9MwlJDIXeZk4jEdFmRH1k7) |
 | **8x A100 80GB** | 640GB | Full-Scale Distributed Training, Production LLM Training | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AvvhRvhnxqnMQbcYtEHMkYjLQ) |
+| **16x A100 80GB** | 1.28TB | Massive-Scale Training, Frontier Research, Multi-Node Simulation | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34Aw5gzEBFp16G3AGlAH5Ekgnz9) |
 | **8x H100** | 640GB | Next-Gen Performance, Maximum Throughput, Cutting-Edge Workloads | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AkM7NRseSAShZynOmqGYNKzfq) |
 
 ### What's Included
