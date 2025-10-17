@@ -158,16 +158,16 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    # Auto-refresh controls
+    # Auto-refresh controls - default to 5s for smoother experience
     auto_refresh = mo.ui.refresh(
-        default_interval="2s",
-        options=["1s", "2s", "5s", "10s"]
+        default_interval="5s",
+        options=["2s", "5s", "10s", "30s"]
     )
     
     mo.hstack([
         mo.md("**Auto-refresh metrics:**"),
         auto_refresh,
-        mo.md("*(Choose refresh interval - uncheck to disable)*")
+        mo.md("*(Longer intervals = smoother. Uncheck to disable)*")
     ])
     return auto_refresh,
 
@@ -210,16 +210,21 @@ def __(GPUtil, alt, auto_refresh, mo, pd):
             
             df_metrics = pd.DataFrame(metrics_data)
             
-            # Create bar chart
+            # Create bar chart with fixed dimensions to prevent layout shift
+            num_gpus = len(current_gpus)
+            chart_height = max(100, 80 * num_gpus)  # Scale height with GPU count
+            
             metrics_chart = alt.Chart(df_metrics).mark_bar().encode(
-                x=alt.X('Value:Q', title='Value'),
+                x=alt.X('Value:Q', title='Value', scale=alt.Scale(domain=[0, 100])),
                 y=alt.Y('Metric:N', title=''),
                 color=alt.Color('GPU:N', legend=alt.Legend(title="GPU")),
                 row=alt.Row('GPU:N', title='')
             ).properties(
                 width=600,
-                height=100,
+                height=chart_height,
                 title='GPU Metrics Overview'
+            ).configure_view(
+                strokeWidth=0  # Remove borders for cleaner look
             )
             
             # Create detailed info cards
