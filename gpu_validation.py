@@ -310,10 +310,10 @@ def __(mo, stress_test_running, time, torch, torch_available):
             for _gpu_id in range(_num_gpus):
                 _device = torch.device(f"cuda:{_gpu_id}")
                 
-                # Allocate MAXIMUM memory - use 80% to account for PyTorch overhead
+                # Allocate memory - use 70% to account for PyTorch overhead and marimo state
                 _gpu_props = torch.cuda.get_device_properties(_gpu_id)
                 _total_mem = _gpu_props.total_memory
-                _target_mem = int(_total_mem * 0.80)  # Use 80% of GPU memory (safer)
+                _target_mem = int(_total_mem * 0.70)  # Use 70% of GPU memory (safer with marimo)
                 
                 # Calculate matrix size based on available memory
                 # float32 = 4 bytes, matrix = size^2, we want 4 matrices
@@ -361,7 +361,7 @@ def __(mo, stress_test_running, time, torch, torch_available):
                 "🔥 **MAXIMUM GPU STRESS TEST RUNNING!**",
                 "",
                 f"**GPUs Stressed**: All {_num_gpus} GPU(s)",
-                f"**Memory Usage**: ~80% of available GPU memory per GPU",
+                f"**Memory Usage**: ~70% of available GPU memory per GPU",
                 f"**Matrix Size**: {_gpu_size}×{_gpu_size} per tensor ({_num_matrices} tensors per GPU)",
                 f"**Operations**: {_iterations * 5} chained matrix multiplications per cycle",
                 "",
@@ -388,12 +388,15 @@ def __(mo, stress_test_running, time, torch, torch_available):
                 kind="danger"
             )
     else:
+        # Clean up GPU memory when switch is off
+        torch.cuda.empty_cache()
+        
         test_result = mo.md("""
         💡 **Toggle the switch above to start MAXIMUM GPU stress testing**
         
         This test will push ALL GPUs to 100% utilization:
         - Automatically detects all GPUs
-        - Uses ~80% of available GPU memory per GPU
+        - Uses ~70% of available GPU memory per GPU
         - Runs 500+ intensive matrix operations per cycle
         - Keeps running continuously while enabled
         - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
