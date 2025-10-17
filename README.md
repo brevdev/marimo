@@ -34,6 +34,7 @@ Deploy Marimo with GPU access instantly using these pre-configured environments:
 | GPU Configuration | vRAM | Use Case | Deploy |
 |-------------------|------|----------|--------|
 | **1x L40S** | 48GB | General ML, Training, Inference | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AI5Pvj2cwyqzv50io8WJBpK4t) |
+| **1x A100 80GB** | 80GB | High-Performance Training, Research, Large Models | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34Av9Vi6v0PTWsVCtDqSUmRuVzP) |
 | **8x H100** | 640GB | Large-scale Training, Multi-GPU Workloads, Distributed Training | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AkM7NRseSAShZynOmqGYNKzfq) |
 
 ### What's Included
