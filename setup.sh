@@ -70,26 +70,26 @@ if [ -n "$REPO_URL" ]; then
         "/workspace"
     )
     
-    NOTEBOOKS_COPIED=0
     for SOURCE_DIR in "${MARIMO_SOURCE_DIRS[@]}"; do
         if [ -d "$SOURCE_DIR" ]; then
             # Find all .py files and check if they're marimo notebooks
-            while IFS= read -r -d '' notebook; do
+            for notebook in "$SOURCE_DIR"/*.py; do
+                [ -f "$notebook" ] || continue
                 # Check if file contains marimo.App (indicates it's a marimo notebook)
                 if grep -q "marimo.App" "$notebook" 2>/dev/null; then
                     NOTEBOOK_NAME=$(basename "$notebook")
-                    cp "$notebook" "$HOME/$NOTEBOOKS_DIR/$NOTEBOOK_NAME"
-                    echo "  ✓ Copied: $NOTEBOOK_NAME"
-                    ((NOTEBOOKS_COPIED++))
+                    cp "$notebook" "$HOME/$NOTEBOOKS_DIR/$NOTEBOOK_NAME" || true
+                    echo "  [+] Copied: $NOTEBOOK_NAME"
+                    NOTEBOOKS_COPIED=$((NOTEBOOKS_COPIED + 1))
                 fi
-            done < <(find "$SOURCE_DIR" -maxdepth 1 -name "*.py" -type f -print0 2>/dev/null)
+            done
         fi
     done
     
-    if [ $NOTEBOOKS_COPIED -gt 0 ]; then
-        echo "  📓 Total notebooks copied: $NOTEBOOKS_COPIED"
+    if [ "$NOTEBOOKS_COPIED" -gt 0 ]; then
+        echo "  Total notebooks copied: $NOTEBOOKS_COPIED"
     else
-        echo "  ⚠️  No marimo notebooks found to copy"
+        echo "  No marimo notebooks found to copy"
     fi
 fi
 
@@ -136,16 +136,16 @@ sudo systemctl start marimo.service
 # Wait for service to start
 sleep 2
 
-(echo ""; echo ""; echo "═══════════════════════════════════════════════════════════"; echo "";)
-(echo "  ✅  Setup Complete! Marimo is now running"; echo "";)
-(echo "═══════════════════════════════════════════════════════════"; echo "";)
-(echo ""; echo "📍 Notebooks Location: $HOME/$NOTEBOOKS_DIR"; echo "";)
-(echo "🌐 Access URL: http://localhost:${MARIMO_PORT:-8080}"; echo "";)
-if [ $NOTEBOOKS_COPIED -gt 0 ]; then
-    (echo "📓 Custom Notebooks: $NOTEBOOKS_COPIED notebook(s) added"; echo "";)
+(echo ""; echo ""; echo "==============================================================="; echo "";)
+(echo "  Setup Complete! Marimo is now running"; echo "";)
+(echo "==============================================================="; echo "";)
+(echo ""; echo "Notebooks Location: $HOME/$NOTEBOOKS_DIR"; echo "";)
+(echo "Access URL: http://localhost:${MARIMO_PORT:-8080}"; echo "";)
+if [ "$NOTEBOOKS_COPIED" -gt 0 ]; then
+    (echo "Custom Notebooks: $NOTEBOOKS_COPIED notebook(s) added"; echo "";)
 fi
 (echo ""; echo "Useful commands:"; echo "";)
-(echo "  • Check status:  sudo systemctl status marimo"; echo "";)
-(echo "  • View logs:     sudo journalctl -u marimo -f"; echo "";)
-(echo "  • Restart:       sudo systemctl restart marimo"; echo "";)
-(echo ""; echo "═══════════════════════════════════════════════════════════"; echo "";)
+(echo "  - Check status:  sudo systemctl status marimo"; echo "";)
+(echo "  - View logs:     sudo journalctl -u marimo -f"; echo "";)
+(echo "  - Restart:       sudo systemctl restart marimo"; echo "";)
+(echo ""; echo "==============================================================="; echo "";)
