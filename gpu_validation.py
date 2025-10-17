@@ -290,8 +290,14 @@ def __(mo, stress_test_running, subprocess):
     
     _is_running = stress_test_running.value
     
-    # Check if gpu-burn is available
-    _gpu_burn_path = shutil.which("gpu_burn")
+    # Check multiple locations for gpu-burn
+    _gpu_burn_path = shutil.which("gpu_burn")  # Check PATH first
+    
+    if not _gpu_burn_path:
+        # Check if compiled in home directory
+        _home_gpu_burn = os.path.expanduser("~/gpu-burn/gpu_burn")
+        if os.path.exists(_home_gpu_burn):
+            _gpu_burn_path = _home_gpu_burn
     
     # Try to install gpu-burn if not found
     if not _gpu_burn_path:
@@ -299,38 +305,40 @@ def __(mo, stress_test_running, subprocess):
         _install_msg.append("🔧 **gpu-burn not found - attempting to install...**\n")
         
         try:
-            # Try apt-get first (Ubuntu/Debian)
-            _install_result = subprocess.run(
-                ["sudo", "apt-get", "install", "-y", "gpu-burn"],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            # Skip apt-get (often not in repos), go straight to source compile
+            _install_msg.append("📦 Compiling gpu-burn from source...")
             
-            if _install_result.returncode == 0:
-                _install_msg.append("✅ Successfully installed gpu-burn via apt!")
-                _gpu_burn_path = shutil.which("gpu_burn")
-            else:
-                _install_msg.append("⚠️ apt-get install failed, trying source compile...")
-                
-                # Fallback: compile from source
-                os.chdir(os.path.expanduser("~"))
-                if not os.path.exists("gpu-burn"):
-                    subprocess.run(["git", "clone", "https://github.com/wilicc/gpu-burn.git"], check=True, timeout=30)
-                
-                os.chdir("gpu-burn")
-                subprocess.run(["make"], check=True, timeout=60)
-                
-                # Add to PATH
-                _gpu_burn_path = os.path.join(os.getcwd(), "gpu_burn")
+            # Compile from source
+            _home_dir = os.path.expanduser("~")
+            _gpu_burn_dir = os.path.join(_home_dir, "gpu-burn")
+            
+            if not os.path.exists(_gpu_burn_dir):
+                subprocess.run(
+                    ["git", "clone", "https://github.com/wilicc/gpu-burn.git", _gpu_burn_dir],
+                    check=True,
+                    timeout=30,
+                    cwd=_home_dir
+                )
+            
+            subprocess.run(["make"], check=True, timeout=60, cwd=_gpu_burn_dir)
+            
+            # Set path to compiled binary
+            _gpu_burn_path = os.path.join(_gpu_burn_dir, "gpu_burn")
+            
+            if os.path.exists(_gpu_burn_path):
                 _install_msg.append(f"✅ Successfully compiled gpu-burn from source!")
+                _install_msg.append(f"📍 Binary location: {_gpu_burn_path}")
+            else:
+                _install_msg.append(f"❌ Compilation succeeded but binary not found at {_gpu_burn_path}")
+                _gpu_burn_path = None
                 
         except Exception as e:
             _install_msg.append(f"❌ Installation failed: {str(e)}")
+            _gpu_burn_path = None
         
         if not _gpu_burn_path:
             test_result = mo.callout(
-                mo.md("\n".join(_install_msg) + "\n\n**Manual installation**: Run `sudo apt-get install gpu-burn` or compile from [github.com/wilicc/gpu-burn](https://github.com/wilicc/gpu-burn)"),
+                mo.md("\n".join(_install_msg) + "\n\n**Manual installation**: Compile from [github.com/wilicc/gpu-burn](https://github.com/wilicc/gpu-burn)"),
                 kind="danger"
             )
         else:
@@ -340,53 +348,61 @@ def __(mo, stress_test_running, subprocess):
             )
     elif _is_running:
         try:
-            # Run gpu-burn for 60 seconds
+            # Run gpu-burn for 30 seconds (shorter for faster iteration)
             # Since marimo re-runs the cell continuously while switch is on,
             # this effectively runs gpu-burn continuously
-            _duration = 60  # seconds
+            _duration = 30  # seconds
+            
+            _start_msg = f"🔥 Running gpu-burn from: {_gpu_burn_path}\n⏱️ Duration: {_duration} seconds..."
             
             _result = subprocess.run(
                 [_gpu_burn_path, str(_duration)],
                 capture_output=True,
                 text=True,
-                timeout=_duration + 5
+                timeout=_duration + 10
             )
             
-            # Parse output
-            _output_lines = _result.stdout.strip().split('\n') if _result.stdout else []
-            _gpus_tested = len([line for line in _output_lines if "GPU" in line and "OK" in line or "FAULTY" in line])
+            # Get both stdout and stderr
+            _full_output = (_result.stdout or "") + (_result.stderr or "")
+            _output_lines = _full_output.strip().split('\n') if _full_output else []
+            
+            # Count GPUs being tested
+            _gpus_tested = len([line for line in _output_lines if "GPU" in line and ("OK" in line or "FAULTY" in line or "initialized" in line)])
+            if _gpus_tested == 0:
+                _gpus_tested = "Detecting..."
             
             test_result = mo.callout(
                 mo.md(f"""
                 🔥 **gpu-burn Stress Test RUNNING!**
                 
                 **Tool**: Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn)  
+                **Binary**: `{_gpu_burn_path}`  
                 **Duration**: {_duration} seconds per cycle  
-                **GPUs Tested**: All {_gpus_tested} GPU(s) simultaneously  
-                **Intensity**: MAXIMUM (uses 95% GPU memory + doubles precision)
+                **GPUs**: {_gpus_tested}  
+                **Intensity**: MAXIMUM (95% GPU memory + double precision)
                 
-                📊 **Status**: Running continuous GPU stress test  
+                📊 **Status**: Active stress test  
                 ⚠️ **This will keep re-running while enabled**
                 
                 Watch metrics above auto-refresh to see 100% utilization!  
                 Toggle off to stop.
                 
-                **Last Run Output**:
+                **Output** (last 1000 chars):
                 ```
-                {_result.stdout[-500:] if _result.stdout else "Starting..."}
+                {_full_output[-1000:] if _full_output else "Starting gpu-burn..."}
                 ```
                 """),
                 kind="info"
             )
             
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             test_result = mo.callout(
-                mo.md("⏱️ **gpu-burn test running** (this is normal - it runs for 60s per cycle)"),
-                kind="info"
+                mo.md(f"⏱️ **gpu-burn still running** (taking longer than expected)\n\nOutput so far:\n```\n{e.stdout[:500] if e.stdout else 'No output yet'}\n```"),
+                kind="warn"
             )
         except Exception as e:
             test_result = mo.callout(
-                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\nMake sure gpu-burn is properly installed."),
+                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\n**Path tried**: `{_gpu_burn_path}`\n\nTry running manually: `{_gpu_burn_path} 10`"),
                 kind="danger"
             )
     else:
