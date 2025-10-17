@@ -12,10 +12,43 @@ set -euo pipefail
 
 # Detect the actual Brev user dynamically
 # This handles ubuntu, nvidia, shadeform, or any other user
+# Skips system users like 'launchpad' and finds the interactive user
 if [ -z "${USER:-}" ] || [ "${USER:-}" = "root" ]; then
-    # Try to detect the actual non-root user
-    DETECTED_USER=$(ls -d /home/* 2>/dev/null | head -1 | xargs basename)
-    USER="${DETECTED_USER:-ubuntu}"
+    # Check if run via sudo first
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        USER="$SUDO_USER"
+    else
+        # Find actual interactive user by checking:
+        # 1. Users with UID >= 1000 (standard for interactive users)
+        # 2. Skip known system/service users
+        DETECTED_USER=""
+        for user_home in /home/*; do
+            username=$(basename "$user_home")
+            # Skip known service users
+            if [ "$username" = "launchpad" ]; then
+                continue
+            fi
+            # Check if user has UID >= 1000 (interactive user)
+            if id "$username" &>/dev/null; then
+                user_uid=$(id -u "$username" 2>/dev/null || echo 0)
+                if [ "$user_uid" -ge 1000 ]; then
+                    DETECTED_USER="$username"
+                    break
+                fi
+            fi
+        done
+        # Fall back to known common users if detection fails
+        if [ -z "$DETECTED_USER" ]; then
+            if [ -d "/home/nvidia" ]; then
+                DETECTED_USER="nvidia"
+            elif [ -d "/home/ubuntu" ]; then
+                DETECTED_USER="ubuntu"
+            else
+                DETECTED_USER="ubuntu"
+            fi
+        fi
+        USER="$DETECTED_USER"
+    fi
 fi
 
 # Set HOME if not defined (for systemd service context)
