@@ -30,6 +30,7 @@ def __():
     import platform
     
     # GPU monitoring libraries
+    gpu_libs_error = None
     try:
         import pynvml
         import GPUtil
@@ -284,7 +285,7 @@ def __(mo):
 
 
 @app.cell
-def __(mo, stress_test_running, subprocess):
+def __(mo, psutil, stress_test_running, subprocess):
     import shutil
     import os
     
@@ -348,9 +349,7 @@ def __(mo, stress_test_running, subprocess):
             )
     elif _is_running:
         try:
-            # Check if there's already a gpu-burn process running
-            import psutil
-            
+            # Check if there's already a gpu-burn process running (using psutil from cell-2)
             _gpu_burn_running = False
             _gpu_burn_pid = None
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -405,9 +404,7 @@ def __(mo, stress_test_running, subprocess):
                 kind="danger"
             )
     else:
-        # Kill any running gpu-burn processes when switch is off
-        import psutil
-        
+        # Kill any running gpu-burn processes when switch is off (using psutil from cell-2)
         _killed_processes = []
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
