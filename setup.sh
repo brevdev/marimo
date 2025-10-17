@@ -12,7 +12,7 @@ set -euo pipefail
 
 # Detect the actual Brev user dynamically
 # This handles ubuntu, nvidia, shadeform, or any other user
-if [ -z "$USER" ] || [ "$USER" = "root" ]; then
+if [ -z "${USER:-}" ] || [ "${USER:-}" = "root" ]; then
     # Try to detect the actual non-root user
     DETECTED_USER=$(ls -d /home/* 2>/dev/null | head -1 | xargs basename)
     USER="${DETECTED_USER:-ubuntu}"
