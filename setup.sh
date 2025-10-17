@@ -16,6 +16,7 @@ USER="${USER:-ubuntu}"
 
 REPO_URL="${MARIMO_REPO_URL:-https://github.com/marimo-team/examples.git}"
 NOTEBOOKS_DIR="${MARIMO_NOTEBOOKS_DIR:-marimo-examples}"
+NOTEBOOKS_COPIED=0
 
 ##### Install Python and pip if not available #####
 if ! command -v pip3 &> /dev/null; then
