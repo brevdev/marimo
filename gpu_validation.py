@@ -287,18 +287,57 @@ def __(mo):
 def __(mo, stress_test_running, subprocess):
     import shutil
     import os
-    import signal
     
     _is_running = stress_test_running.value
     
     # Check if gpu-burn is available
     _gpu_burn_path = shutil.which("gpu_burn")
     
+    # Try to install gpu-burn if not found
     if not _gpu_burn_path:
-        test_result = mo.callout(
-            mo.md("❌ gpu-burn not found. Please run the setup script to install it."),
-            kind="danger"
-        )
+        _install_msg = []
+        _install_msg.append("🔧 **gpu-burn not found - attempting to install...**\n")
+        
+        try:
+            # Try apt-get first (Ubuntu/Debian)
+            _install_result = subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "gpu-burn"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if _install_result.returncode == 0:
+                _install_msg.append("✅ Successfully installed gpu-burn via apt!")
+                _gpu_burn_path = shutil.which("gpu_burn")
+            else:
+                _install_msg.append("⚠️ apt-get install failed, trying source compile...")
+                
+                # Fallback: compile from source
+                os.chdir(os.path.expanduser("~"))
+                if not os.path.exists("gpu-burn"):
+                    subprocess.run(["git", "clone", "https://github.com/wilicc/gpu-burn.git"], check=True, timeout=30)
+                
+                os.chdir("gpu-burn")
+                subprocess.run(["make"], check=True, timeout=60)
+                
+                # Add to PATH
+                _gpu_burn_path = os.path.join(os.getcwd(), "gpu_burn")
+                _install_msg.append(f"✅ Successfully compiled gpu-burn from source!")
+                
+        except Exception as e:
+            _install_msg.append(f"❌ Installation failed: {str(e)}")
+        
+        if not _gpu_burn_path:
+            test_result = mo.callout(
+                mo.md("\n".join(_install_msg) + "\n\n**Manual installation**: Run `sudo apt-get install gpu-burn` or compile from [github.com/wilicc/gpu-burn](https://github.com/wilicc/gpu-burn)"),
+                kind="danger"
+            )
+        else:
+            test_result = mo.callout(
+                mo.md("\n".join(_install_msg) + "\n\n**Ready!** Toggle the switch to start stress testing."),
+                kind="success"
+            )
     elif _is_running:
         try:
             # Run gpu-burn for 60 seconds

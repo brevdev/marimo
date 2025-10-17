@@ -58,31 +58,6 @@ if [ -n "$REPO_URL" ]; then
         pip3 install -r "$HOME/$NOTEBOOKS_DIR/requirements.txt"
     fi
     
-    # Install gpu-burn from package manager (much easier than compiling!)
-    (echo ""; echo "##### Installing gpu-burn for GPU stress testing #####"; echo "";)
-    # Try to install from apt (available on Ubuntu/Debian)
-    if command -v apt-get &> /dev/null; then
-        sudo apt-get update -qq
-        sudo apt-get install -y gpu-burn 2>/dev/null || echo "Note: gpu-burn not available via apt, trying source compile..."
-    fi
-    
-    # Fallback: compile from source if not available via apt
-    if ! command -v gpu_burn &> /dev/null; then
-        cd "$HOME"
-        if [ ! -d "gpu-burn" ]; then
-            git clone https://github.com/wilicc/gpu-burn.git 2>/dev/null || true
-            if [ -d "gpu-burn" ]; then
-                cd gpu-burn
-                make 2>/dev/null || echo "Note: gpu-burn compilation skipped (requires CUDA development toolkit)"
-                # Add to PATH if compiled successfully
-                if [ -f "gpu_burn" ]; then
-                    echo 'export PATH="$HOME/gpu-burn:$PATH"' >> "$HOME/.bashrc" 2>/dev/null || true
-                fi
-                cd "$HOME"
-            fi
-        fi
-    fi
-    
     # Copy GPU validation notebook and other custom notebooks from this repo
     (echo ""; echo "##### Adding GPU validation notebook to notebooks directory #####"; echo "";)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
