@@ -355,11 +355,15 @@ def __(mo, stress_test_running, subprocess):
             
             _start_msg = f"🔥 Running gpu-burn from: {_gpu_burn_path}\n⏱️ Duration: {_duration} seconds..."
             
+            # Run from gpu-burn directory so it can find compare.ptx
+            _gpu_burn_dir = os.path.dirname(_gpu_burn_path)
+            
             _result = subprocess.run(
                 [_gpu_burn_path, str(_duration)],
                 capture_output=True,
                 text=True,
-                timeout=_duration + 10
+                timeout=_duration + 10,
+                cwd=_gpu_burn_dir  # Run from gpu-burn directory
             )
             
             # Get both stdout and stderr
