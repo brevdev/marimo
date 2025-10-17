@@ -83,8 +83,9 @@ if [ -z "${USER:-}" ] || [ "${USER:-}" = "root" ]; then
     fi
 fi
 
-# Set HOME if not defined (for systemd service context)
-HOME="${HOME:-/home/$USER}"
+# Force HOME to be the detected user's home directory
+# Don't use ${HOME:-...} because HOME is already set to /root when running as root
+HOME="/home/$USER"
 
 REPO_URL="${MARIMO_REPO_URL:-https://github.com/marimo-team/examples.git}"
 NOTEBOOKS_DIR="${MARIMO_NOTEBOOKS_DIR:-marimo-examples}"
