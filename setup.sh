@@ -102,6 +102,11 @@ if ! command -v pip3 &> /dev/null; then
     sudo apt-get install -y python3 python3-pip python3-venv
 fi
 
+##### Install build tools and CUDA development files for gpu-burn compilation #####
+(echo ""; echo "##### Installing build tools for GPU utilities #####"; echo "";)
+sudo apt-get update
+sudo apt-get install -y build-essential git || echo "Warning: Could not install build tools"
+
 ##### Install Marimo #####
 (echo ""; echo "##### Installing Marimo #####"; echo "";)
 pip3 install --upgrade marimo

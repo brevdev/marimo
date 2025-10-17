@@ -319,7 +319,31 @@ def __(mo, psutil, stress_test_running, subprocess):
         _install_msg.append("🔧 **gpu-burn not found - attempting to install...**\n")
         
         try:
-            # Skip apt-get (often not in repos), go straight to source compile
+            _install_msg.append("📦 Checking for build tools...")
+            
+            # Check if build tools (gcc, make) are installed
+            _has_gcc = subprocess.run(["which", "gcc"], capture_output=True).returncode == 0
+            _has_make = subprocess.run(["which", "make"], capture_output=True).returncode == 0
+            
+            if not _has_gcc or not _has_make:
+                _install_msg.append("⚙️ Installing build tools (build-essential)...")
+                try:
+                    subprocess.run(["sudo", "apt-get", "update"], check=True, timeout=30, capture_output=True)
+                    subprocess.run(
+                        ["sudo", "apt-get", "install", "-y", "build-essential"], 
+                        check=True, 
+                        timeout=120, 
+                        capture_output=True
+                    )
+                    _install_msg.append("✅ Build tools installed successfully")
+                except Exception as build_error:
+                    _install_msg.append(f"❌ Failed to install build tools: {str(build_error)}")
+                    _install_msg.append("\n**Manual fix:** Run `sudo apt-get install build-essential`")
+                    _gpu_burn_path = None
+                    raise Exception("Build tools installation failed")
+            else:
+                _install_msg.append("✅ Build tools already installed")
+            
             _install_msg.append("📦 Compiling gpu-burn from source...")
             
             # Compile from source
@@ -331,21 +355,41 @@ def __(mo, psutil, stress_test_running, subprocess):
                     ["git", "clone", "https://github.com/wilicc/gpu-burn.git", _gpu_burn_dir],
                     check=True,
                     timeout=30,
-                    cwd=_home_dir
+                    cwd=_home_dir,
+                    capture_output=True,
+                    text=True
                 )
             
-            subprocess.run(["make"], check=True, timeout=60, cwd=_gpu_burn_dir)
+            # Run make with captured output for better error messages
+            _make_result = subprocess.run(
+                ["make"], 
+                timeout=60, 
+                cwd=_gpu_burn_dir,
+                capture_output=True,
+                text=True
+            )
             
-            # Set path to compiled binary
-            _gpu_burn_path = os.path.join(_gpu_burn_dir, "gpu_burn")
-            
-            if os.path.exists(_gpu_burn_path):
-                _install_msg.append(f"✅ Successfully compiled gpu-burn from source!")
-                _install_msg.append(f"📍 Binary location: {_gpu_burn_path}")
-            else:
-                _install_msg.append(f"❌ Compilation succeeded but binary not found at {_gpu_burn_path}")
+            if _make_result.returncode != 0:
+                _install_msg.append(f"❌ Compilation failed (exit code {_make_result.returncode})")
+                _install_msg.append(f"\n**Build output:**\n```\n{_make_result.stdout}\n{_make_result.stderr}\n```")
+                _install_msg.append("\n**Common fixes:**")
+                _install_msg.append("- Ensure build tools are installed: `sudo apt-get install build-essential`")
+                _install_msg.append("- CUDA toolkit must be available (usually pre-installed on GPU instances)")
                 _gpu_burn_path = None
+            else:
+                # Set path to compiled binary
+                _gpu_burn_path = os.path.join(_gpu_burn_dir, "gpu_burn")
                 
+                if os.path.exists(_gpu_burn_path):
+                    _install_msg.append(f"✅ Successfully compiled gpu-burn from source!")
+                    _install_msg.append(f"📍 Binary location: {_gpu_burn_path}")
+                else:
+                    _install_msg.append(f"❌ Compilation succeeded but binary not found at {_gpu_burn_path}")
+                    _gpu_burn_path = None
+                
+        except subprocess.TimeoutExpired:
+            _install_msg.append(f"❌ Compilation timed out (>60s)")
+            _gpu_burn_path = None
         except Exception as e:
             _install_msg.append(f"❌ Installation failed: {str(e)}")
             _gpu_burn_path = None
