@@ -10,13 +10,24 @@ set -euo pipefail
 # Set MARIMO_REPO_URL="" to skip cloning entirely
 ####################################################################################
 
+# Detect the actual Brev user dynamically
+# This handles ubuntu, nvidia, shadeform, or any other user
+if [ -z "$USER" ] || [ "$USER" = "root" ]; then
+    # Try to detect the actual non-root user
+    DETECTED_USER=$(ls -d /home/* 2>/dev/null | head -1 | xargs basename)
+    USER="${DETECTED_USER:-ubuntu}"
+fi
+
 # Set HOME if not defined (for systemd service context)
-HOME="${HOME:-/home/ubuntu}"
-USER="${USER:-ubuntu}"
+HOME="${HOME:-/home/$USER}"
 
 REPO_URL="${MARIMO_REPO_URL:-https://github.com/marimo-team/examples.git}"
 NOTEBOOKS_DIR="${MARIMO_NOTEBOOKS_DIR:-marimo-examples}"
 NOTEBOOKS_COPIED=0
+
+(echo ""; echo "##### Detected Environment #####"; echo "";)
+(echo "User: $USER"; echo "";)
+(echo "Home: $HOME"; echo "";)
 
 ##### Install Python and pip if not available #####
 if ! command -v pip3 &> /dev/null; then
@@ -63,15 +74,23 @@ if [ -n "$REPO_URL" ]; then
     (echo ""; echo "##### Adding custom marimo notebooks to notebooks directory #####"; echo "";)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    # Try multiple possible locations for the marimo repo
-    # Check various user home directories since the running user may differ from repo owner
+    # Build list of directories to search
+    # Start with obvious locations
     MARIMO_SOURCE_DIRS=(
         "$SCRIPT_DIR"
         "$HOME/marimo"
-        "/home/ubuntu/marimo"
-        "/home/nvidia/marimo"
-        "/workspace"
     )
+    
+    # Dynamically detect all user home directories and add their marimo subdirs
+    # This handles ubuntu, nvidia, shadeform, or any other Brev user
+    for user_home in /home/*; do
+        if [ -d "$user_home/marimo" ]; then
+            MARIMO_SOURCE_DIRS+=("$user_home/marimo")
+        fi
+    done
+    
+    # Add generic locations
+    MARIMO_SOURCE_DIRS+=("/workspace")
     
     for SOURCE_DIR in "${MARIMO_SOURCE_DIRS[@]}"; do
         if [ -d "$SOURCE_DIR" ]; then
