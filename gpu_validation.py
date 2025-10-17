@@ -159,10 +159,15 @@ def __(mo):
 @app.cell
 def __(mo):
     # Auto-refresh at 2s - smooth CSS transitions make it feel seamless
-    # No UI needed since it just works!
+    # Must display for it to work, but hide it with CSS
     auto_refresh = mo.ui.refresh(default_interval="2s")
     
-    # Return silently - no visible UI element
+    # Display but make invisible
+    mo.Html(f"""
+    <div style="height: 0; overflow: hidden; opacity: 0; pointer-events: none;">
+        {auto_refresh}
+    </div>
+    """)
     return auto_refresh,
 
 
