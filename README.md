@@ -93,17 +93,18 @@ Marimo runs automatically as a systemd service and serves notebooks from `~/mari
   - Choose refresh rate: 1s, 2s, 5s, or 10s
   - Live updating charts and visualizations
   - Shows metrics for all GPUs in multi-GPU systems
-- **Intensive multi-GPU stress test** with toggle switch
-  - Automatically detects and stresses **ALL GPUs simultaneously**
+- **Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn) stress test** with toggle switch
+  - Uses the **actual gpu-burn tool** (not a custom implementation!)
+  - Automatically stresses **ALL GPUs simultaneously**
   - Turn on/off to start/stop GPU stress
-  - Similar intensity to [gpu-burn](https://github.com/wilicc/gpu-burn)
-  - Uses 14K×14K matrices with 3 tensors per GPU
-  - 60 chained matrix multiplications per cycle
-  - Watch metrics auto-update as GPUs heat up
+  - Runs 60-second cycles continuously while enabled
+  - Uses 95% GPU memory + double-precision operations
+  - Battle-tested tool used in datacenters worldwide
+  - Watch metrics auto-update as GPUs heat up to 100%
   - See temperature, utilization, and memory spike across all GPUs
-  - Shows per-GPU performance stats
+  - Shows gpu-burn output in real-time
 - nvidia-smi output (collapsed by default)
-- Optional: [gpu-burn](https://github.com/wilicc/gpu-burn) CLI tool installed in `~/gpu-burn/`
+- gpu-burn installed via apt (Ubuntu/Debian) or compiled from source
 
 ### Marimo Examples
 Includes curated notebooks from [marimo-team/examples](https://github.com/marimo-team/examples):

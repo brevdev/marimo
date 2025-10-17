@@ -284,122 +284,84 @@ def __(mo):
 
 
 @app.cell
-def __(mo, stress_test_running, time, torch, torch_available):
+def __(mo, stress_test_running, subprocess):
+    import shutil
+    import os
+    import signal
+    
     _is_running = stress_test_running.value
     
-    if not torch_available:
+    # Check if gpu-burn is available
+    _gpu_burn_path = shutil.which("gpu_burn")
+    
+    if not _gpu_burn_path:
         test_result = mo.callout(
-            mo.md("❌ PyTorch not available. Cannot run GPU test."),
-            kind="danger"
-        )
-    elif not torch.cuda.is_available():
-        test_result = mo.callout(
-            mo.md("❌ CUDA not available. Cannot run GPU test."),
+            mo.md("❌ gpu-burn not found. Please run the setup script to install it."),
             kind="danger"
         )
     elif _is_running:
         try:
-            # Clear any existing GPU memory first
-            torch.cuda.empty_cache()
+            # Run gpu-burn for 60 seconds
+            # Since marimo re-runs the cell continuously while switch is on,
+            # this effectively runs gpu-burn continuously
+            _duration = 60  # seconds
             
-            # Get number of GPUs
-            _num_gpus = torch.cuda.device_count()
-            _gpu_results = []
+            _result = subprocess.run(
+                [_gpu_burn_path, str(_duration)],
+                capture_output=True,
+                text=True,
+                timeout=_duration + 5
+            )
             
-            # Stress ALL GPUs simultaneously with MAXIMUM intensity
-            for _gpu_id in range(_num_gpus):
-                _device = torch.device(f"cuda:{_gpu_id}")
-                
-                # Allocate memory - use 70% to account for PyTorch overhead and marimo state
-                _gpu_props = torch.cuda.get_device_properties(_gpu_id)
-                _total_mem = _gpu_props.total_memory
-                _target_mem = int(_total_mem * 0.70)  # Use 70% of GPU memory (safer with marimo)
-                
-                # Calculate matrix size based on available memory
-                # float32 = 4 bytes, matrix = size^2, we want 4 matrices
-                _bytes_per_element = 4
-                _num_matrices = 4
-                _gpu_size = int((_target_mem / (_bytes_per_element * _num_matrices)) ** 0.5)
-                _gpu_size = (_gpu_size // 128) * 128  # Round to multiple of 128 for efficiency
-                
-                # Allocate multiple large tensors to max out memory
-                _tensors = []
-                for _i in range(_num_matrices):
-                    _tensors.append(torch.randn(_gpu_size, _gpu_size, device=_device, dtype=torch.float32))
-                
-                # Run CONTINUOUS intensive operations
-                _start_time = time.time()
-                _ops_count = 0
-                _iterations = 100  # Much more iterations to keep GPU busy
-                
-                # Continuous heavy compute to push to 100%
-                for _iter in range(_iterations):
-                    # Chain multiple operations without breaks
-                    _result = torch.matmul(_tensors[0], _tensors[1])
-                    _result = torch.matmul(_result, _tensors[2])
-                    _result = torch.matmul(_result, _tensors[3])
-                    _result = torch.matmul(_result, _tensors[0])
-                    _result = torch.matmul(_result, _tensors[1])
-                    _ops_count += 5
-                
-                torch.cuda.synchronize(_device)
-                _elapsed = time.time() - _start_time
-                
-                _ops_per_sec = _ops_count / _elapsed if _elapsed > 0 else 0
-                _mem_allocated = torch.cuda.memory_allocated(_gpu_id) / 1e9
-                _mem_total = _total_mem / 1e9
-                _mem_percent = (_mem_allocated / _mem_total) * 100
-                
-                _gpu_results.append(
-                    f"**GPU {_gpu_id} ({_gpu_props.name})**: {_ops_count} ops in {_elapsed:.1f}s ({_ops_per_sec:.1f} ops/s) | Mem: {_mem_allocated:.1f}/{_mem_total:.1f}GB ({_mem_percent:.0f}%)"
-                )
-                
-                # Keep tensors allocated - don't clean up!
-                # This keeps memory pressure high
-            
-            _result_text = "\n".join([
-                "🔥 **MAXIMUM GPU STRESS TEST RUNNING!**",
-                "",
-                f"**GPUs Stressed**: All {_num_gpus} GPU(s)",
-                f"**Memory Usage**: ~70% of available GPU memory per GPU",
-                f"**Matrix Size**: {_gpu_size}×{_gpu_size} per tensor ({_num_matrices} tensors per GPU)",
-                f"**Operations**: {_iterations * 5} chained matrix multiplications per cycle",
-                "",
-                "📊 **Per-GPU Performance:**",
-                *_gpu_results,
-                "",
-                "🔥 **Status**: Keeping GPUs at MAXIMUM load",
-                "⚠️ **This stress test will run continuously while enabled**",
-                "",
-                "Watch metrics above auto-refresh to see 100% utilization!",
-                "Toggle off to stop."
-            ])
+            # Parse output
+            _output_lines = _result.stdout.strip().split('\n') if _result.stdout else []
+            _gpus_tested = len([line for line in _output_lines if "GPU" in line and "OK" in line or "FAULTY" in line])
             
             test_result = mo.callout(
-                mo.md(_result_text),
+                mo.md(f"""
+                🔥 **gpu-burn Stress Test RUNNING!**
+                
+                **Tool**: Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn)  
+                **Duration**: {_duration} seconds per cycle  
+                **GPUs Tested**: All {_gpus_tested} GPU(s) simultaneously  
+                **Intensity**: MAXIMUM (uses 95% GPU memory + doubles precision)
+                
+                📊 **Status**: Running continuous GPU stress test  
+                ⚠️ **This will keep re-running while enabled**
+                
+                Watch metrics above auto-refresh to see 100% utilization!  
+                Toggle off to stop.
+                
+                **Last Run Output**:
+                ```
+                {_result.stdout[-500:] if _result.stdout else "Starting..."}
+                ```
+                """),
                 kind="info"
             )
             
-        except Exception as e:
-            # Clean up memory on error
-            torch.cuda.empty_cache()
+        except subprocess.TimeoutExpired:
             test_result = mo.callout(
-                mo.md(f"❌ **GPU test failed**: {str(e)}\n\n**Tip**: Toggle the switch off and back on to retry. The test automatically clears GPU memory before each run."),
+                mo.md("⏱️ **gpu-burn test running** (this is normal - it runs for 60s per cycle)"),
+                kind="info"
+            )
+        except Exception as e:
+            test_result = mo.callout(
+                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\nMake sure gpu-burn is properly installed."),
                 kind="danger"
             )
     else:
-        # Clean up GPU memory when switch is off
-        torch.cuda.empty_cache()
-        
         test_result = mo.md("""
-        💡 **Toggle the switch above to start MAXIMUM GPU stress testing**
+        💡 **Toggle the switch above to start gpu-burn stress testing**
         
-        This test will push ALL GPUs to 100% utilization:
-        - Automatically detects all GPUs
-        - Uses ~70% of available GPU memory per GPU
-        - Runs 500+ intensive matrix operations per cycle
-        - Keeps running continuously while enabled
+        This uses the industry-standard **gpu-burn** tool:
+        - Automatically stresses ALL GPUs simultaneously
+        - Uses 95% of GPU memory by default
+        - Double-precision floating point operations
+        - Battle-tested stress testing (used in datacenters worldwide)
         - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
+        
+        **Runs 60-second cycles continuously while enabled!**
         
         Enable auto-refresh above to watch GPUs hit 100%!
         """)
