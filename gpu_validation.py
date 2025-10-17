@@ -174,9 +174,7 @@ def __(mo):
 
 
 @app.cell
-def __(GPUtil, auto_refresh, mo):
-    import time
-    
+def __(GPUtil, auto_refresh, mo, time):
     # Trigger on auto-refresh
     _refresh_trigger = auto_refresh.value
     _update_time = time.strftime("%H:%M:%S")
