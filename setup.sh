@@ -12,32 +12,64 @@ set -euo pipefail
 
 # Detect the actual Brev user dynamically
 # This handles ubuntu, nvidia, shadeform, or any other user
-# Skips system users like 'launchpad' and finds the interactive user
+# Uses Brev-specific markers to identify the correct user
 if [ -z "${USER:-}" ] || [ "${USER:-}" = "root" ]; then
     # Check if run via sudo first
     if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
         USER="$SUDO_USER"
     else
-        # Find actual interactive user by checking:
-        # 1. Users with UID >= 1000 (standard for interactive users)
-        # 2. Skip known system/service users
+        # Find actual Brev user by checking for Brev-specific markers:
+        # 1. .lifecycle-script-ls-*.log files (unique to Brev user)
+        # 2. .verb-setup.log file (Brev-specific)
+        # 3. .cache symlink to /ephemeral/cache
         DETECTED_USER=""
+        
+        # First pass: Look for Brev lifecycle script logs (most reliable)
         for user_home in /home/*; do
             username=$(basename "$user_home")
-            # Skip known service users
-            if [ "$username" = "launchpad" ]; then
-                continue
+            # Check for Brev lifecycle script log files
+            if ls "$user_home"/.lifecycle-script-ls-*.log 2>/dev/null | grep -q .; then
+                DETECTED_USER="$username"
+                break
             fi
-            # Check if user has UID >= 1000 (interactive user)
-            if id "$username" &>/dev/null; then
-                user_uid=$(id -u "$username" 2>/dev/null || echo 0)
-                if [ "$user_uid" -ge 1000 ]; then
+            # Check for Brev verb setup log
+            if [ -f "$user_home/.verb-setup.log" ]; then
+                DETECTED_USER="$username"
+                break
+            fi
+        done
+        
+        # Second pass: Check for .cache symlink to /ephemeral/cache
+        if [ -z "$DETECTED_USER" ]; then
+            for user_home in /home/*; do
+                username=$(basename "$user_home")
+                if [ -L "$user_home/.cache" ] && [ "$(readlink "$user_home/.cache")" = "/ephemeral/cache" ]; then
                     DETECTED_USER="$username"
                     break
                 fi
-            fi
-        done
-        # Fall back to known common users if detection fails
+            done
+        fi
+        
+        # Third pass: Use UID check, but skip known service users
+        if [ -z "$DETECTED_USER" ]; then
+            for user_home in /home/*; do
+                username=$(basename "$user_home")
+                # Skip known service users
+                if [ "$username" = "launchpad" ]; then
+                    continue
+                fi
+                # Check if user has UID >= 1000 (interactive user)
+                if id "$username" &>/dev/null; then
+                    user_uid=$(id -u "$username" 2>/dev/null || echo 0)
+                    if [ "$user_uid" -ge 1000 ]; then
+                        DETECTED_USER="$username"
+                        break
+                    fi
+                fi
+            done
+        fi
+        
+        # Fall back to known common users if all detection fails
         if [ -z "$DETECTED_USER" ]; then
             if [ -d "/home/nvidia" ]; then
                 DETECTED_USER="nvidia"
