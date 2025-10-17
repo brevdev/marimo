@@ -299,6 +299,9 @@ def __(mo, stress_test_running, time, torch, torch_available):
         )
     elif _is_running:
         try:
+            # Clear any existing GPU memory first
+            torch.cuda.empty_cache()
+            
             # Get number of GPUs
             _num_gpus = torch.cuda.device_count()
             _gpu_results = []
@@ -307,10 +310,10 @@ def __(mo, stress_test_running, time, torch, torch_available):
             for _gpu_id in range(_num_gpus):
                 _device = torch.device(f"cuda:{_gpu_id}")
                 
-                # Allocate MAXIMUM memory - use 90% of available GPU memory
+                # Allocate MAXIMUM memory - use 80% to account for PyTorch overhead
                 _gpu_props = torch.cuda.get_device_properties(_gpu_id)
                 _total_mem = _gpu_props.total_memory
-                _target_mem = int(_total_mem * 0.90)  # Use 90% of GPU memory
+                _target_mem = int(_total_mem * 0.80)  # Use 80% of GPU memory (safer)
                 
                 # Calculate matrix size based on available memory
                 # float32 = 4 bytes, matrix = size^2, we want 4 matrices
@@ -358,7 +361,7 @@ def __(mo, stress_test_running, time, torch, torch_available):
                 "🔥 **MAXIMUM GPU STRESS TEST RUNNING!**",
                 "",
                 f"**GPUs Stressed**: All {_num_gpus} GPU(s)",
-                f"**Memory Usage**: ~90% of available GPU memory per GPU",
+                f"**Memory Usage**: ~80% of available GPU memory per GPU",
                 f"**Matrix Size**: {_gpu_size}×{_gpu_size} per tensor ({_num_matrices} tensors per GPU)",
                 f"**Operations**: {_iterations * 5} chained matrix multiplications per cycle",
                 "",
@@ -378,8 +381,10 @@ def __(mo, stress_test_running, time, torch, torch_available):
             )
             
         except Exception as e:
+            # Clean up memory on error
+            torch.cuda.empty_cache()
             test_result = mo.callout(
-                mo.md(f"❌ **GPU test failed**: {str(e)}\n\nTry reducing memory usage or closing other GPU applications."),
+                mo.md(f"❌ **GPU test failed**: {str(e)}\n\n**Tip**: Toggle the switch off and back on to retry. The test automatically clears GPU memory before each run."),
                 kind="danger"
             )
     else:
@@ -388,7 +393,7 @@ def __(mo, stress_test_running, time, torch, torch_available):
         
         This test will push ALL GPUs to 100% utilization:
         - Automatically detects all GPUs
-        - Uses ~90% of available GPU memory per GPU
+        - Uses ~80% of available GPU memory per GPU
         - Runs 500+ intensive matrix operations per cycle
         - Keeps running continuously while enabled
         - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
