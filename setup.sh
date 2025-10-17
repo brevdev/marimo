@@ -58,17 +58,37 @@ if [ -n "$REPO_URL" ]; then
         pip3 install -r "$HOME/$NOTEBOOKS_DIR/requirements.txt"
     fi
     
-    # Copy GPU validation notebook and other custom notebooks from this repo
-    (echo ""; echo "##### Adding GPU validation notebook to notebooks directory #####"; echo "";)
+    # Copy all marimo notebooks from this repo to notebooks directory
+    (echo ""; echo "##### Adding custom marimo notebooks to notebooks directory #####"; echo "";)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
-    # Try multiple possible locations for gpu_validation.py
-    if [ -f "$SCRIPT_DIR/gpu_validation.py" ]; then
-        cp "$SCRIPT_DIR/gpu_validation.py" "$HOME/$NOTEBOOKS_DIR/gpu_validation.py"
-    elif [ -f "$HOME/marimo/gpu_validation.py" ]; then
-        cp "$HOME/marimo/gpu_validation.py" "$HOME/$NOTEBOOKS_DIR/gpu_validation.py"
-    elif [ -f "/workspace/gpu_validation.py" ]; then
-        cp /workspace/gpu_validation.py "$HOME/$NOTEBOOKS_DIR/gpu_validation.py"
+    # Try multiple possible locations for the marimo repo
+    MARIMO_SOURCE_DIRS=(
+        "$SCRIPT_DIR"
+        "$HOME/marimo"
+        "/workspace"
+    )
+    
+    NOTEBOOKS_COPIED=0
+    for SOURCE_DIR in "${MARIMO_SOURCE_DIRS[@]}"; do
+        if [ -d "$SOURCE_DIR" ]; then
+            # Find all .py files and check if they're marimo notebooks
+            while IFS= read -r -d '' notebook; do
+                # Check if file contains marimo.App (indicates it's a marimo notebook)
+                if grep -q "marimo.App" "$notebook" 2>/dev/null; then
+                    NOTEBOOK_NAME=$(basename "$notebook")
+                    cp "$notebook" "$HOME/$NOTEBOOKS_DIR/$NOTEBOOK_NAME"
+                    echo "  ✓ Copied: $NOTEBOOK_NAME"
+                    ((NOTEBOOKS_COPIED++))
+                fi
+            done < <(find "$SOURCE_DIR" -maxdepth 1 -name "*.py" -type f -print0 2>/dev/null)
+        fi
+    done
+    
+    if [ $NOTEBOOKS_COPIED -gt 0 ]; then
+        echo "  📓 Total notebooks copied: $NOTEBOOKS_COPIED"
+    else
+        echo "  ⚠️  No marimo notebooks found to copy"
     fi
 fi
 
@@ -120,7 +140,9 @@ sleep 2
 (echo "═══════════════════════════════════════════════════════════"; echo "";)
 (echo ""; echo "📍 Notebooks Location: $HOME/$NOTEBOOKS_DIR"; echo "";)
 (echo "🌐 Access URL: http://localhost:${MARIMO_PORT:-8080}"; echo "";)
-(echo "🎮 GPU Validation: Open gpu_validation.py to test your GPU"; echo "";)
+if [ $NOTEBOOKS_COPIED -gt 0 ]; then
+    (echo "📓 Custom Notebooks: $NOTEBOOKS_COPIED notebook(s) added"; echo "";)
+fi
 (echo ""; echo "Useful commands:"; echo "";)
 (echo "  • Check status:  sudo systemctl status marimo"; echo "";)
 (echo "  • View logs:     sudo journalctl -u marimo -f"; echo "";)
