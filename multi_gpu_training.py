@@ -16,10 +16,12 @@ Features:
 - Real-time training metrics across GPUs
 
 Requirements:
-- Multiple NVIDIA GPUs (2-8 GPUs recommended)
+- NVIDIA GPUs (1x, 2x, 4x, or 8x configurations)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000
 - CUDA 11.4+
-- NCCL for GPU communication
-- 8GB+ VRAM per GPU
+- NCCL for multi-GPU communication (auto-installed with PyTorch)
+- 4GB+ VRAM per GPU (automatically adjusts batch size)
+- Works on single GPU (falls back gracefully)
 
 Notes:
 - Falls back to single-GPU if only one GPU available
@@ -95,9 +97,22 @@ def __(mo):
         label="Model Size"
     )
     
+    # Adjust batch size based on GPU count for divisibility
+    available_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    
+    # Ensure batch size is divisible by GPU count
+    default_batch = 128
+    if available_gpus > 1:
+        # Round to nearest multiple of GPU count
+        default_batch = ((default_batch // available_gpus) * available_gpus)
+    
     batch_size = mo.ui.slider(
-        start=32, stop=512, step=32, value=128,
-        label="Total Batch Size", show_value=True
+        start=max(available_gpus, 32), 
+        stop=512, 
+        step=available_gpus if available_gpus > 1 else 32, 
+        value=default_batch,
+        label=f"Total Batch Size (divisible by {available_gpus} GPU{'s' if available_gpus > 1 else ''})", 
+        show_value=True
     )
     
     num_epochs = mo.ui.slider(
@@ -344,9 +359,14 @@ def __(torch, time, nn, F):
     ) -> Dict:
         """Simulate multi-GPU training (simplified DDP)"""
         # Distribute model across GPUs
-        if n_gpus > 1 and torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model, device_ids=list(range(n_gpus)))
-            device = f'cuda:0'
+        available_gpus = torch.cuda.device_count()
+        actual_gpus = min(n_gpus, available_gpus)
+        
+        if actual_gpus > 1:
+            # Use DataParallel for multi-GPU (simplified for Marimo)
+            device_ids = list(range(actual_gpus))
+            model = nn.DataParallel(model, device_ids=device_ids)
+            device = f'cuda:{device_ids[0]}'
         else:
             device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         

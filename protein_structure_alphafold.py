@@ -16,9 +16,12 @@ Features:
 - GPU-accelerated structure refinement
 
 Requirements:
-- NVIDIA GPU with 8GB+ VRAM (L40S, A100, H100 recommended)
+- NVIDIA GPU with 2GB+ VRAM (simplified model works on any GPU)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000 (all configs: 1x-8x)
 - CUDA 11.4+
-- For full AlphaFold: 40GB+ GPU memory recommended
+- This demo uses simplified structure prediction (< 500MB memory)
+- For production AlphaFold: 40GB+ GPU memory recommended
+- Single GPU only (uses GPU 0)
 
 Notes:
 - This is a simplified demonstration

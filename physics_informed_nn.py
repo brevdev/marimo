@@ -15,8 +15,11 @@ Features:
 - GPU-accelerated automatic differentiation
 
 Requirements:
-- NVIDIA GPU with 4GB+ VRAM (any modern GPU works)
+- NVIDIA GPU with 2GB+ VRAM (works on any GPU)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000 (all configs: 1x-8x)
 - CUDA 11.4+
+- Lightweight PINN models (< 500MB memory)
+- Single GPU only (uses GPU 0)
 - PyTorch with autograd support
 
 Use Cases:

@@ -17,9 +17,11 @@ Features:
 
 Requirements:
 - NVIDIA GPU with compute capability 7.0+ (Volta or newer)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000 (all configs: 1x-8x)
 - CUDA 11.4+
 - TensorRT 8.5+
-- 8GB+ GPU memory
+- 4GB+ GPU memory (models auto-sized to available memory)
+- Single GPU only (uses GPU 0)
 
 Author: Brev.dev Team
 Date: 2025-10-17

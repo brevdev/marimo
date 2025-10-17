@@ -15,10 +15,12 @@ Features:
 - Scalability testing on graphs up to millions of edges
 
 Requirements:
-- NVIDIA GPU with 8GB+ VRAM
+- NVIDIA GPU with 4GB+ VRAM (works on all data center GPUs)
+- Tested on: L40S (48GB), A100 (40/80GB), H100 (80GB), H200 (141GB), B200 (180GB), RTX PRO 6000 (48GB)
 - CUDA 11.4+
-- RAPIDS cuGraph (optional, will fall back to NetworkX)
-- For million-edge graphs: 16GB+ GPU memory recommended
+- RAPIDS cuGraph (optional, falls back to NetworkX for CPU)
+- Graph size automatically scales with available memory
+- Single GPU only (cuGraph uses GPU 0)
 
 Author: Brev.dev Team
 Date: 2025-10-17

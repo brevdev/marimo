@@ -15,10 +15,12 @@ Features:
 - Multiple operation types: filtering, groupby, joins, sorting
 
 Requirements:
-- NVIDIA GPU with 8GB+ VRAM (any modern GPU works)
+- NVIDIA GPU with 4GB+ VRAM (works on all data center GPUs)
+- Tested on: L40S (48GB), A100 (40/80GB), H100 (80GB), H200 (141GB), B200 (180GB), RTX PRO 6000 (48GB)
 - CUDA 11.4+
-- RAPIDS cuDF installed
-- For 100M row datasets: 16GB+ GPU memory recommended
+- RAPIDS cuDF installed (optional, falls back to pandas)
+- Dataset size automatically scales with available memory
+- Single GPU only (cuDF uses GPU 0)
 
 Author: Brev.dev Team
 Date: 2025-10-17

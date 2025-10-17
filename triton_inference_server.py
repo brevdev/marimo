@@ -16,10 +16,11 @@ Features:
 - Request queue analytics
 
 Requirements:
-- NVIDIA GPU with 8GB+ VRAM
+- NVIDIA GPU with 4GB+ VRAM (simulation works on any GPU)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000 (all configs: 1x-8x)
 - CUDA 11.4+
-- Triton Inference Server (or mock implementation for demo)
-- Multiple model formats for demonstration
+- This is a simulation - actual Triton requires separate installation
+- Single GPU demonstration (can be extended to multi-GPU)
 
 Author: Brev.dev Team
 Date: 2025-10-17

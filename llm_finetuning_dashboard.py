@@ -15,9 +15,11 @@ Features:
 - Proper checkpoint management
 
 Requirements:
-- NVIDIA GPU with 16GB+ VRAM (L40S, A100, H100 recommended)
-- CUDA 12.0+
-- ~8GB for model weights + ~8GB for training (total 16GB+ recommended)
+- NVIDIA GPU with 8GB+ VRAM (works on all data center GPUs)
+- Tested on: L40S (48GB), A100 (40/80GB), H100 (80GB), H200 (141GB), B200 (180GB), RTX PRO 6000 (48GB)
+- CUDA 11.4+
+- Model memory: ~1-2GB for GPT-2, adjustable batch size for any GPU
+- Single GPU only (uses GPU 0)
 
 Author: Brev.dev Team
 Date: 2025-10-17

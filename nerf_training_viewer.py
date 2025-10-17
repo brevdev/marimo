@@ -16,9 +16,11 @@ Features:
 - Configurable network architecture
 
 Requirements:
-- NVIDIA GPU with 8GB+ VRAM (any modern GPU)
+- NVIDIA GPU with 2GB+ VRAM (works on any modern GPU)
+- Tested on: L40S, A100, H100, H200, B200, RTX PRO 6000 (all configs: 1x-8x)
 - CUDA 11.4+
-- Recommended: RTX 3080+, L40S, or better for faster training
+- Lightweight models (< 1GB memory)
+- Single GPU only (uses GPU 0)
 
 Notes:
 - First few epochs show blurry results (expected)

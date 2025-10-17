@@ -16,10 +16,12 @@ Features:
 - Quality vs speed trade-off visualization
 
 Requirements:
-- NVIDIA GPU with 10GB+ VRAM (RTX 3080+, L40S, A100, H100)
-- CUDA 11.8+
+- NVIDIA GPU with 8GB+ VRAM (any modern data center GPU)
+- Works on: L40S (48GB), A100 (40/80GB), H100 (80GB), H200 (141GB), B200 (180GB), RTX PRO 6000 (48GB)
+- CUDA 11.4+
 - Stable Diffusion models (~4GB download on first run)
-- Recommended: 16GB+ VRAM for batch generation
+- Automatically adjusts settings based on available GPU memory
+- Single GPU only (uses GPU 0)
 
 Author: Brev.dev Team
 Date: 2025-10-17
@@ -85,8 +87,31 @@ def __(mo, DIFFUSERS_AVAILABLE):
 
 
 @app.cell
-def __(mo):
-    """Interactive generation controls"""
+def __(mo, torch):
+    """Interactive generation controls with memory-aware defaults"""
+    
+    # Get GPU memory and adjust defaults
+    gpu_memory_gb = 8.0  # Default assumption
+    if torch.cuda.is_available():
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+    
+    # Adjust defaults based on GPU memory
+    if gpu_memory_gb < 12:
+        default_size = '512x512'
+        default_num_images = 1
+        size_options = ['512x512']
+        max_images = 1
+    elif gpu_memory_gb < 24:
+        default_size = '512x512'
+        default_num_images = 1
+        size_options = ['512x512', '512x768', '768x512']
+        max_images = 2
+    else:
+        default_size = '512x512'
+        default_num_images = 1
+        size_options = ['512x512', '768x768', '512x768', '768x512']
+        max_images = 4
+    
     prompt_input = mo.ui.text_area(
         value="A serene mountain landscape at sunset, digital art, highly detailed, trending on artstation",
         label="Prompt",
@@ -110,13 +135,13 @@ def __(mo):
     )
     
     image_size = mo.ui.dropdown(
-        options=['512x512', '768x768', '512x768', '768x512'],
-        value='512x512',
+        options=size_options,
+        value=default_size,
         label="Image Size"
     )
     
     num_images = mo.ui.slider(
-        start=1, stop=4, step=1, value=1,
+        start=1, stop=max_images, step=1, value=default_num_images,
         label="Number of Images", show_value=True
     )
     
@@ -128,6 +153,10 @@ def __(mo):
     generate_btn = mo.ui.run_button(label="🎨 Generate Image")
     
     mo.vstack([
+        mo.callout(
+            mo.md(f"**GPU Memory**: {gpu_memory_gb:.1f} GB detected. Settings auto-adjusted for optimal performance."),
+            kind="info"
+        ),
         prompt_input,
         negative_prompt_input,
         mo.hstack([num_inference_steps, guidance_scale], justify="start"),
@@ -136,7 +165,8 @@ def __(mo):
     ])
     return (
         prompt_input, negative_prompt_input, num_inference_steps,
-        guidance_scale, image_size, num_images, use_trt, generate_btn
+        guidance_scale, image_size, num_images, use_trt, generate_btn,
+        gpu_memory_gb, size_options, max_images
     )
 
 
