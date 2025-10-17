@@ -158,24 +158,28 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    # Auto-refresh controls - default to 5s for smoother experience
+    # Auto-refresh controls - default to 5s for smooth experience
+    # Using mo.ui.refresh but with CSS transitions for smoothness
     auto_refresh = mo.ui.refresh(
         default_interval="5s",
         options=["2s", "5s", "10s", "30s"]
     )
     
     mo.hstack([
-        mo.md("**Auto-refresh metrics:**"),
+        mo.md("**Auto-refresh:**"),
         auto_refresh,
-        mo.md("*(Longer intervals = smoother. Uncheck to disable)*")
+        mo.md("*(Metrics update with smooth transitions)*")
     ])
     return auto_refresh,
 
 
 @app.cell
-def __(GPUtil, alt, auto_refresh, mo, pd):
+def __(GPUtil, auto_refresh, mo):
+    import time
+    
     # Trigger on auto-refresh
     _refresh_trigger = auto_refresh.value
+    _update_time = time.strftime("%H:%M:%S")
     
     try:
         current_gpus = GPUtil.getGPUs()
@@ -186,65 +190,73 @@ def __(GPUtil, alt, auto_refresh, mo, pd):
                 kind="warn"
             )
         else:
-            # Create metrics for each GPU
-            metrics_data = []
-            for current_gpu in current_gpus:
-                metrics_data.append({
-                    'GPU': f"GPU {current_gpu.id}",
-                    'Metric': 'Utilization',
-                    'Value': current_gpu.load * 100,
-                    'Unit': '%'
-                })
-                metrics_data.append({
-                    'GPU': f"GPU {current_gpu.id}",
-                    'Metric': 'Memory Used',
-                    'Value': (current_gpu.memoryUsed / current_gpu.memoryTotal) * 100,
-                    'Unit': '%'
-                })
-                metrics_data.append({
-                    'GPU': f"GPU {current_gpu.id}",
-                    'Metric': 'Temperature',
-                    'Value': current_gpu.temperature,
-                    'Unit': '°C'
-                })
+            # Create modern card-based display with smooth CSS transitions
+            gpu_cards_html = []
             
-            df_metrics = pd.DataFrame(metrics_data)
-            
-            # Create bar chart with fixed dimensions to prevent layout shift
-            num_gpus = len(current_gpus)
-            chart_height = max(100, 80 * num_gpus)  # Scale height with GPU count
-            
-            metrics_chart = alt.Chart(df_metrics).mark_bar().encode(
-                x=alt.X('Value:Q', title='Value', scale=alt.Scale(domain=[0, 100])),
-                y=alt.Y('Metric:N', title=''),
-                color=alt.Color('GPU:N', legend=alt.Legend(title="GPU")),
-                row=alt.Row('GPU:N', title='')
-            ).properties(
-                width=600,
-                height=chart_height,
-                title='GPU Metrics Overview'
-            ).configure_view(
-                strokeWidth=0  # Remove borders for cleaner look
-            )
-            
-            # Create detailed info cards
-            gpu_cards = []
-            for current_gpu in current_gpus:
-                gpu_card = mo.md(f"""
-                ### GPU {current_gpu.id}: {current_gpu.name}
+            for gpu in current_gpus:
+                util_pct = round(gpu.load * 100, 1)
+                mem_pct = round((gpu.memoryUsed / gpu.memoryTotal) * 100, 1)
+                temp = gpu.temperature
+                power_info = ""
+                if hasattr(gpu, 'powerDraw') and gpu.powerDraw:
+                    power_info = f"<div style='font-size: 0.8em; color: #888; margin-top: 4px;'>Power: {gpu.powerDraw}W / {gpu.powerLimit}W</div>"
                 
-                **Utilization**: {current_gpu.load * 100:.1f}%  
-                **Memory**: {current_gpu.memoryUsed:.0f} MB / {current_gpu.memoryTotal:.0f} MB ({(current_gpu.memoryUsed/current_gpu.memoryTotal)*100:.1f}%)  
-                **Temperature**: {current_gpu.temperature}°C  
-                **Power Draw**: {getattr(current_gpu, 'powerDraw', 'N/A')} W / {getattr(current_gpu, 'powerLimit', 'N/A')} W
-                """)
-                gpu_cards.append(gpu_card)
+                card_html = f"""
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9; min-height: 200px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU {gpu.id}: {gpu.name}</h3>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                        <!-- Utilization Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #4CAF50; min-height: 100px;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Utilization</div>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 8px;">{util_pct}%</div>
+                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); width: {util_pct}%; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Memory Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3; min-height: 100px;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory</div>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 4px;">{mem_pct}%</div>
+                            <div style="font-size: 0.75em; color: #888; margin-bottom: 8px;">{gpu.memoryUsed:.0f} MB / {gpu.memoryTotal:.0f} MB</div>
+                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, #2196F3 0%, #1976D2 100%); width: {mem_pct}%; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Temperature Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #FF9800; min-height: 100px;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Temperature</div>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 4px;">{temp}°C</div>
+                            {power_info}
+                        </div>
+                    </div>
+                </div>
+                """
+                gpu_cards_html.append(card_html)
             
-            gpu_metrics = mo.vstack([
-                mo.ui.altair_chart(metrics_chart),
-                mo.md("### Detailed Metrics"),
-                mo.hstack(gpu_cards)
-            ])
+            # Combine all GPU cards with update time
+            all_cards = "\n".join(gpu_cards_html)
+            
+            gpu_metrics = mo.Html(f"""
+            <div style="position: relative;">
+                <div style="text-align: right; color: #888; font-size: 0.85em; margin-bottom: 10px; font-family: monospace;">
+                    ⏱️ Last updated: {_update_time}
+                </div>
+                <div style="display: grid; gap: 20px; animation: fadeIn 0.3s ease-in;">
+                    {all_cards}
+                </div>
+            </div>
+            
+            <style>
+                @keyframes fadeIn {{
+                    from {{ opacity: 0.7; transform: translateY(-5px); }}
+                    to {{ opacity: 1; transform: translateY(0); }}
+                }}
+            </style>
+            """)
+            
     except Exception as e:
         gpu_metrics = mo.callout(
             mo.md(f"Error reading GPU metrics: {str(e)}"),
@@ -252,7 +264,7 @@ def __(GPUtil, alt, auto_refresh, mo, pd):
         )
     
     gpu_metrics
-    return gpu_metrics, metrics_chart
+    return gpu_metrics,
 
 
 @app.cell
