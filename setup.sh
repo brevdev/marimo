@@ -115,13 +115,27 @@ if [ -n "$REPO_URL" ]; then
     fi
 fi
 
-##### Ensure notebooks directory exists #####
+##### Ensure notebooks directory exists with proper permissions #####
 (echo ""; echo "##### Ensuring notebooks directory exists #####"; echo "";)
-mkdir -p "$HOME/$NOTEBOOKS_DIR"
 
-# Fix ownership if running as root
+# Create directory as the target user to avoid permission issues
 if [ "$(id -u)" -eq 0 ] && [ -n "$USER" ]; then
-    chown -R "$USER:$USER" "$HOME/$NOTEBOOKS_DIR" 2>/dev/null || true
+    # Running as root - create directory as target user
+    # First ensure HOME directory exists and has proper permissions
+    mkdir -p "$HOME"
+    chown "$USER:$USER" "$HOME" 2>/dev/null || true
+    
+    # Create notebooks directory as the target user
+    sudo -u "$USER" mkdir -p "$HOME/$NOTEBOOKS_DIR" 2>/dev/null || mkdir -p "$HOME/$NOTEBOOKS_DIR"
+    
+    # Ensure proper ownership and permissions
+    chown -R "$USER:$USER" "$HOME/$NOTEBOOKS_DIR"
+    chmod -R 755 "$HOME/$NOTEBOOKS_DIR"
+    echo "Created $HOME/$NOTEBOOKS_DIR as user $USER"
+else
+    # Running as regular user
+    mkdir -p "$HOME/$NOTEBOOKS_DIR"
+    echo "Created $HOME/$NOTEBOOKS_DIR"
 fi
 
 ##### Create systemd service for Marimo #####
