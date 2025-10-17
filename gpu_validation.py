@@ -473,81 +473,66 @@ def __(mo, psutil, stress_test_running, subprocess):
                     kind="danger"
                 )
         else:
-            # PyTorch fallback stress test - use gpu-stress package if available
+            # PyTorch fallback - run intensive operations on EACH cell execution
+            # With 2s auto-refresh, this keeps GPUs constantly stressed
             try:
                 _torch_test_msg = []
                 _torch_test_msg.append("🔥 **PyTorch Stress Test ACTIVE!**\n")
-                _torch_test_msg.append("*(Using PyTorch fallback - gpu-burn unavailable)*\n")
                 
-                # Try to use gpu-stress package for intensive continuous stress
-                try:
-                    import subprocess as _sp
-                    # Check if gpu-stress is installed
-                    _gpu_stress_check = _sp.run(["pip", "show", "gpu-stress"], capture_output=True, text=True)
+                torch.cuda.empty_cache()
+                _gpu_count = torch.cuda.device_count()
+                
+                # Run intensive operations RIGHT NOW (synchronously) on ALL GPUs in parallel
+                # This cell re-executes every 2s due to auto-refresh, keeping GPUs busy
+                import threading
+                _overall_start = time.time()
+                _ops_per_gpu = [0] * _gpu_count
+                
+                def _stress_gpu(gpu_id):
+                    device = f'cuda:{gpu_id}'
+                    torch.cuda.set_device(device)
                     
-                    if _gpu_stress_check.returncode != 0:
-                        _torch_test_msg.append("📦 Installing gpu-stress package...")
-                        _sp.run(["pip", "install", "--quiet", "gpu-stress"], check=True, timeout=60)
-                        _torch_test_msg.append("✅ gpu-stress installed")
+                    # Large matrix operations - run for ~1.5 seconds per GPU
+                    size = 4096
+                    a = torch.randn(size, size, device=device, dtype=torch.float32)
+                    b = torch.randn(size, size, device=device, dtype=torch.float32)
                     
-                    # Start gpu-stress as background process
-                    _gpu_count = torch.cuda.device_count()
-                    _stress_processes = []
+                    _gpu_start = time.time()
+                    _ops_count = 0
                     
-                    for gpu_id in range(_gpu_count):
-                        # Run gpu-stress for each GPU
-                        _proc = _sp.Popen(
-                            ["gpu-stress", "-d", str(gpu_id), "-t", "1h"],
-                            stdout=_sp.PIPE,
-                            stderr=_sp.PIPE,
-                            text=True
-                        )
-                        _stress_processes.append(_proc.pid)
+                    # Do many operations in tight loop for 1.5 seconds
+                    while time.time() - _gpu_start < 1.5:
+                        c = torch.matmul(a, b)
+                        d = torch.matmul(c, a)
+                        e = torch.matmul(d, b)
+                        result = torch.relu(e)
+                        torch.cuda.synchronize(device)
+                        _ops_count += 3
+                        # Rotate to avoid caching
+                        a, b = result, a
                     
-                    _torch_test_msg.append(f"✅ **Stressing {_gpu_count} GPU(s)** with continuous matrix operations")
-                    _torch_test_msg.append(f"🔧 **Tool**: gpu-stress (PyTorch-based)")
-                    _torch_test_msg.append(f"📍 **PIDs**: {', '.join(map(str, _stress_processes))}")
-                    _torch_test_msg.append(f"⚡ **Intensity**: MAXIMUM continuous compute")
-                    _torch_test_msg.append(f"\n📊 Watch metrics above - GPUs will hit 100% in ~10 seconds!")
-                    _torch_test_msg.append(f"⚠️ Toggle OFF to stop")
-                    
-                except Exception as stress_err:
-                    # Fallback to manual continuous operations
-                    _torch_test_msg.append(f"⚠️ gpu-stress unavailable ({str(stress_err)}), using manual stress...")
-                    
-                    torch.cuda.empty_cache()
-                    _gpu_count = torch.cuda.device_count()
-                    
-                    # Create continuous stress threads for each GPU
-                    import threading
-                    _stress_active = threading.Event()
-                    _stress_active.set()
-                    
-                    def _gpu_stress_loop(gpu_id):
-                        device = f'cuda:{gpu_id}'
-                        # Smaller tensors for continuous matmul
-                        size = 8192
-                        a = torch.randn(size, size, device=device)
-                        b = torch.randn(size, size, device=device)
-                        
-                        while _stress_active.is_set():
-                            # Continuous intensive operations
-                            c = torch.matmul(a, b)
-                            c = torch.relu(c)
-                            c = c / 2.0
-                            torch.cuda.synchronize(device)
-                            # Rotate tensors to keep compute going
-                            a, b, c = b, c, a
-                    
-                    _threads = []
-                    for gpu_id in range(_gpu_count):
-                        t = threading.Thread(target=_gpu_stress_loop, args=(gpu_id,), daemon=True)
-                        t.start()
-                        _threads.append(t)
-                    
-                    _torch_test_msg.append(f"✅ **Stressing {_gpu_count} GPU(s)** with continuous operations")
-                    _torch_test_msg.append(f"⚡ **Running**: Matrix multiply + ReLU + division (continuous loop)")
-                    _torch_test_msg.append(f"📊 Watch metrics - should see 100% utilization!")
+                    _ops_per_gpu[gpu_id] = _ops_count
+                
+                # Run stress on all GPUs in parallel using threads
+                _threads = []
+                for gpu_id in range(_gpu_count):
+                    t = threading.Thread(target=_stress_gpu, args=(gpu_id,))
+                    t.start()
+                    _threads.append(t)
+                
+                # Wait for all threads to complete
+                for t in _threads:
+                    t.join()
+                
+                _elapsed = time.time() - _overall_start
+                _total_ops = sum(_ops_per_gpu)
+                
+                _torch_test_msg.append(f"✅ **Stressing {_gpu_count} GPU(s)** synchronously")
+                _torch_test_msg.append(f"⚡ **This cycle**: {_total_ops} matrix operations in {_elapsed:.2f}s")
+                _torch_test_msg.append(f"🔄 **Auto-refresh**: Repeats every 2 seconds")
+                _torch_test_msg.append(f"📊 **Should see ~80-100% utilization** (depends on GPU)")
+                _torch_test_msg.append(f"\n💡 Using 4096x4096 matrices with matmul chains")
+                _torch_test_msg.append(f"⚠️ Toggle OFF to stop")
                 
                 test_result = mo.callout(
                     mo.md("\n".join(_torch_test_msg)),
@@ -555,8 +540,9 @@ def __(mo, psutil, stress_test_running, subprocess):
                 )
                 
             except Exception as e:
+                import traceback
                 test_result = mo.callout(
-                    mo.md(f"❌ **PyTorch stress test failed**: {str(e)}\n\nTry reducing memory usage or closing other GPU applications."),
+                    mo.md(f"❌ **PyTorch stress test failed**: {str(e)}\n\n```\n{traceback.format_exc()}\n```"),
                     kind="danger"
                 )
     else:
