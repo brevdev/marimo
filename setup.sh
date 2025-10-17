@@ -64,9 +64,12 @@ if [ -n "$REPO_URL" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
     # Try multiple possible locations for the marimo repo
+    # Check various user home directories since the running user may differ from repo owner
     MARIMO_SOURCE_DIRS=(
         "$SCRIPT_DIR"
         "$HOME/marimo"
+        "/home/ubuntu/marimo"
+        "/home/nvidia/marimo"
         "/workspace"
     )
     
