@@ -115,6 +115,15 @@ if [ -n "$REPO_URL" ]; then
     fi
 fi
 
+##### Ensure notebooks directory exists #####
+(echo ""; echo "##### Ensuring notebooks directory exists #####"; echo "";)
+mkdir -p "$HOME/$NOTEBOOKS_DIR"
+
+# Fix ownership if running as root
+if [ "$(id -u)" -eq 0 ] && [ -n "$USER" ]; then
+    chown -R "$USER:$USER" "$HOME/$NOTEBOOKS_DIR" 2>/dev/null || true
+fi
+
 ##### Create systemd service for Marimo #####
 (echo ""; echo "##### Setting up Marimo systemd service #####"; echo "";)
 sudo tee /etc/systemd/system/marimo.service > /dev/null << EOF
@@ -140,13 +149,9 @@ SyslogIdentifier=marimo
 WantedBy=multi-user.target
 EOF
 
-##### Fix ownership if running as root #####
+##### Fix ownership of shell config files if running as root #####
 if [ "$(id -u)" -eq 0 ] && [ -n "$USER" ]; then
-    (echo ""; echo "##### Fixing file ownership #####"; echo "";)
     chown -R "$USER:$USER" "$HOME/.bashrc" "$HOME/.zshrc" 2>/dev/null || true
-    if [ -d "$HOME/$NOTEBOOKS_DIR" ]; then
-        chown -R "$USER:$USER" "$HOME/$NOTEBOOKS_DIR" 2>/dev/null || true
-    fi
 fi
 
 ##### Enable and start Marimo service #####
