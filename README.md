@@ -46,6 +46,7 @@ Deploy Marimo with GPU access instantly using these pre-configured environments:
 | **4x H100** | 320GB | Advanced Next-Gen Training, Extreme Performance Multi-GPU | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AxM881OaulzI5fly5jt6zCSC0) |
 | **8x H100** | 640GB | Next-Gen Performance, Maximum Throughput, Cutting-Edge Workloads | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AkM7NRseSAShZynOmqGYNKzfq) |
 | **1x H200** | 141GB | Newest Architecture, Maximum Memory, Flagship Single-GPU | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AxYf6IWzxYvihAGrsMDLsboP9) |
+| **8x H200** | 1.13TB | Ultimate Configuration, Maximum Memory & Performance, Absolute Peak | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AxjDMpVPA5sT4nUMd05T1SDrM) |
 
 ### What's Included
 
