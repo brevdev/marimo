@@ -319,7 +319,7 @@ def __(mo, psutil, stress_test_running, subprocess):
         _install_msg.append("🔧 **gpu-burn not found - attempting to install...**\n")
         
         try:
-            _install_msg.append("📦 Checking for build tools...")
+            _install_msg.append("📦 Checking prerequisites...")
             
             # Check if build tools (gcc, make) are installed
             _has_gcc = subprocess.run(["which", "gcc"], capture_output=True).returncode == 0
@@ -335,14 +335,24 @@ def __(mo, psutil, stress_test_running, subprocess):
                         timeout=120, 
                         capture_output=True
                     )
-                    _install_msg.append("✅ Build tools installed successfully")
+                    _install_msg.append("✅ Build tools installed")
                 except Exception as build_error:
                     _install_msg.append(f"❌ Failed to install build tools: {str(build_error)}")
                     _install_msg.append("\n**Manual fix:** Run `sudo apt-get install build-essential`")
                     _gpu_burn_path = None
                     raise Exception("Build tools installation failed")
             else:
-                _install_msg.append("✅ Build tools already installed")
+                _install_msg.append("✅ Build tools found")
+            
+            # Check for CUDA toolkit (needed for gpu-burn compilation)
+            _nvcc_result = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
+            if _nvcc_result.returncode == 0:
+                _install_msg.append("✅ CUDA toolkit found")
+            else:
+                _install_msg.append("⚠️ CUDA toolkit not found - using PyTorch fallback")
+                _install_msg.append("*(This is normal - CUDA dev headers often not installed)*")
+                _gpu_burn_path = None
+                raise Exception("CUDA toolkit not available for compilation")
             
             _install_msg.append("📦 Compiling gpu-burn from source...")
             
@@ -396,8 +406,8 @@ def __(mo, psutil, stress_test_running, subprocess):
         
         if not _gpu_burn_path:
             test_result = mo.callout(
-                mo.md("\n".join(_install_msg) + "\n\n**Manual installation**: Compile from [github.com/wilicc/gpu-burn](https://github.com/wilicc/gpu-burn)"),
-                kind="danger"
+                mo.md("\n".join(_install_msg) + "\n\n**Falling back to PyTorch stress test** (see below)"),
+                kind="warn"
             )
         else:
             test_result = mo.callout(
@@ -405,61 +415,103 @@ def __(mo, psutil, stress_test_running, subprocess):
                 kind="success"
             )
     elif _is_running:
-        try:
-            # Check if there's already a gpu-burn process running (using psutil from cell-2)
-            _gpu_burn_running = False
-            _gpu_burn_pid = None
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    if proc.info['cmdline'] and 'gpu_burn' in ' '.join(proc.info['cmdline']):
-                        _gpu_burn_running = True
-                        _gpu_burn_pid = proc.info['pid']
-                        break
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-            
-            # Start gpu-burn if not already running
-            if not _gpu_burn_running:
-                _gpu_burn_dir = os.path.dirname(_gpu_burn_path)
+        # Use gpu-burn if available, otherwise fall back to PyTorch
+        if _gpu_burn_path:
+            try:
+                # Check if there's already a gpu-burn process running (using psutil from cell-2)
+                _gpu_burn_running = False
+                _gpu_burn_pid = None
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                    try:
+                        if proc.info['cmdline'] and 'gpu_burn' in ' '.join(proc.info['cmdline']):
+                            _gpu_burn_running = True
+                            _gpu_burn_pid = proc.info['pid']
+                            break
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
                 
-                # Run gpu-burn in background for long duration (1 hour)
-                # We'll kill it when switch is toggled off
-                _process = subprocess.Popen(
-                    [_gpu_burn_path, "3600"],  # Run for 1 hour
-                    cwd=_gpu_burn_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
+                # Start gpu-burn if not already running
+                if not _gpu_burn_running:
+                    _gpu_burn_dir = os.path.dirname(_gpu_burn_path)
+                    
+                    # Run gpu-burn in background for long duration (1 hour)
+                    # We'll kill it when switch is toggled off
+                    _process = subprocess.Popen(
+                        [_gpu_burn_path, "3600"],  # Run for 1 hour
+                        cwd=_gpu_burn_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    _gpu_burn_pid = _process.pid
+                    _status_msg = f"✅ Started gpu-burn (PID: {_gpu_burn_pid})"
+                else:
+                    _status_msg = f"🔥 gpu-burn already running (PID: {_gpu_burn_pid})"
+                
+                test_result = mo.callout(
+                    mo.md(f"""
+                    🔥 **gpu-burn Stress Test ACTIVE!**
+                    
+                    **Status**: {_status_msg}  
+                    **Tool**: Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn)  
+                    **Binary**: `{_gpu_burn_path}`  
+                    **Process ID**: {_gpu_burn_pid}  
+                    **Intensity**: MAXIMUM (95% GPU memory + double precision)
+                    
+                    📊 **Metrics are now updating in real-time!**  
+                    ⚠️ **gpu-burn runs in background** - metrics will refresh while it runs
+                    
+                    Watch the metrics above auto-refresh to see 100% utilization!  
+                    Toggle off to stop gpu-burn.
+                    """),
+                    kind="info"
                 )
-                _gpu_burn_pid = _process.pid
-                _status_msg = f"✅ Started gpu-burn (PID: {_gpu_burn_pid})"
-            else:
-                _status_msg = f"🔥 gpu-burn already running (PID: {_gpu_burn_pid})"
-            
-            test_result = mo.callout(
-                mo.md(f"""
-                🔥 **gpu-burn Stress Test ACTIVE!**
                 
-                **Status**: {_status_msg}  
-                **Tool**: Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn)  
-                **Binary**: `{_gpu_burn_path}`  
-                **Process ID**: {_gpu_burn_pid}  
-                **Intensity**: MAXIMUM (95% GPU memory + double precision)
+            except Exception as e:
+                test_result = mo.callout(
+                    mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\n**Path tried**: `{_gpu_burn_path}`"),
+                    kind="danger"
+                )
+        else:
+            # PyTorch fallback stress test
+            try:
+                _torch_test_msg = []
+                _torch_test_msg.append("🔥 **PyTorch Stress Test ACTIVE!**\n")
+                _torch_test_msg.append("*(Using PyTorch fallback - gpu-burn unavailable)*\n")
                 
-                📊 **Metrics are now updating in real-time!**  
-                ⚠️ **gpu-burn runs in background** - metrics will refresh while it runs
+                # Run continuous stress test on all GPUs
+                torch.cuda.empty_cache()
                 
-                Watch the metrics above auto-refresh to see 100% utilization!  
-                Toggle off to stop gpu-burn.
-                """),
-                kind="info"
-            )
-            
-        except Exception as e:
-            test_result = mo.callout(
-                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\n**Path tried**: `{_gpu_burn_path}`"),
-                kind="danger"
-            )
+                _gpu_count = torch.cuda.device_count()
+                _tensors = []
+                
+                for gpu_id in range(_gpu_count):
+                    # Allocate 70% of memory on each GPU
+                    _props = torch.cuda.get_device_properties(gpu_id)
+                    _total_mem = _props.total_memory
+                    _target_mem = int(_total_mem * 0.70)
+                    _elem_count = _target_mem // 4  # 4 bytes per float32
+                    
+                    # Create and perform operations
+                    _tensor = torch.randn(_elem_count, device=f'cuda:{gpu_id}')
+                    _result = torch.matmul(_tensor.view(-1, 1000), _tensor.view(1000, -1))
+                    _tensors.append((_tensor, _result))
+                
+                _torch_test_msg.append(f"✅ **Stressing {_gpu_count} GPU(s)** with matrix operations")
+                _torch_test_msg.append(f"📊 **Using ~70% memory** per GPU")
+                _torch_test_msg.append(f"⚠️ **Keep switch ON** to maintain stress")
+                _torch_test_msg.append(f"\nWatch metrics above auto-refresh to see utilization!")
+                
+                test_result = mo.callout(
+                    mo.md("\n".join(_torch_test_msg)),
+                    kind="info"
+                )
+                
+            except Exception as e:
+                test_result = mo.callout(
+                    mo.md(f"❌ **PyTorch stress test failed**: {str(e)}\n\nTry reducing memory usage or closing other GPU applications."),
+                    kind="danger"
+                )
     else:
         # Kill any running gpu-burn processes when switch is off (using psutil from cell-2)
         _killed_processes = []
@@ -471,26 +523,47 @@ def __(mo, psutil, stress_test_running, subprocess):
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         
+        # Clean up PyTorch memory if it was used
+        try:
+            torch.cuda.empty_cache()
+        except:
+            pass
+        
         if _killed_processes:
             test_result = mo.callout(
-                mo.md(f"🛑 **Stopped gpu-burn** (killed PID: {', '.join(map(str, _killed_processes))})\n\nGPU will cool down now. Metrics will return to idle state."),
+                mo.md(f"🛑 **Stopped stress test** (killed PID: {', '.join(map(str, _killed_processes))})\n\nGPU will cool down now. Metrics will return to idle state."),
                 kind="success"
             )
         else:
-            test_result = mo.md("""
-            💡 **Toggle the switch above to start gpu-burn stress testing**
-            
-            This uses the industry-standard **gpu-burn** tool:
-            - Automatically stresses ALL GPUs simultaneously
-            - Uses 95% of GPU memory by default
-            - Double-precision floating point operations
-            - Battle-tested stress testing (used in datacenters worldwide)
-            - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
-            
-            **Runs in background so metrics update in real-time!**
-            
-            Enable auto-refresh above to watch GPUs hit 100%!
-            """)
+            # Show appropriate message based on gpu-burn availability
+            if _gpu_burn_path:
+                test_result = mo.md("""
+                💡 **Toggle the switch above to start GPU stress testing**
+                
+                This uses the industry-standard **gpu-burn** tool:
+                - Automatically stresses ALL GPUs simultaneously
+                - Uses 95% of GPU memory by default
+                - Double-precision floating point operations
+                - Battle-tested stress testing (used in datacenters worldwide)
+                - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
+                
+                **Runs in background so metrics update in real-time!**
+                
+                Enable auto-refresh above to watch GPUs hit 100%!
+                """)
+            else:
+                test_result = mo.md("""
+                💡 **Toggle the switch above to start GPU stress testing**
+                
+                **Using PyTorch fallback** (gpu-burn unavailable):
+                - Stresses ALL GPUs simultaneously
+                - Uses ~70% of GPU memory per GPU
+                - Matrix multiplication operations for compute load
+                - Watch metrics auto-refresh to see utilization increase!
+                
+                *Note: gpu-burn requires CUDA development headers for compilation.*
+                *PyTorch stress test provides a good alternative for basic GPU validation.*
+                """)
     
     test_result
     return test_result,
