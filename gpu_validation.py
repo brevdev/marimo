@@ -348,82 +348,95 @@ def __(mo, stress_test_running, subprocess):
             )
     elif _is_running:
         try:
-            # Run gpu-burn for 30 seconds (shorter for faster iteration)
-            # Since marimo re-runs the cell continuously while switch is on,
-            # this effectively runs gpu-burn continuously
-            _duration = 30  # seconds
+            # Check if there's already a gpu-burn process running
+            import psutil
             
-            _start_msg = f"🔥 Running gpu-burn from: {_gpu_burn_path}\n⏱️ Duration: {_duration} seconds..."
+            _gpu_burn_running = False
+            _gpu_burn_pid = None
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['cmdline'] and 'gpu_burn' in ' '.join(proc.info['cmdline']):
+                        _gpu_burn_running = True
+                        _gpu_burn_pid = proc.info['pid']
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
             
-            # Run from gpu-burn directory so it can find compare.ptx
-            _gpu_burn_dir = os.path.dirname(_gpu_burn_path)
-            
-            _result = subprocess.run(
-                [_gpu_burn_path, str(_duration)],
-                capture_output=True,
-                text=True,
-                timeout=_duration + 10,
-                cwd=_gpu_burn_dir  # Run from gpu-burn directory
-            )
-            
-            # Get both stdout and stderr
-            _full_output = (_result.stdout or "") + (_result.stderr or "")
-            _output_lines = _full_output.strip().split('\n') if _full_output else []
-            
-            # Count GPUs being tested
-            _gpus_tested = len([line for line in _output_lines if "GPU" in line and ("OK" in line or "FAULTY" in line or "initialized" in line)])
-            if _gpus_tested == 0:
-                _gpus_tested = "Detecting..."
+            # Start gpu-burn if not already running
+            if not _gpu_burn_running:
+                _gpu_burn_dir = os.path.dirname(_gpu_burn_path)
+                
+                # Run gpu-burn in background for long duration (1 hour)
+                # We'll kill it when switch is toggled off
+                _process = subprocess.Popen(
+                    [_gpu_burn_path, "3600"],  # Run for 1 hour
+                    cwd=_gpu_burn_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                _gpu_burn_pid = _process.pid
+                _status_msg = f"✅ Started gpu-burn (PID: {_gpu_burn_pid})"
+            else:
+                _status_msg = f"🔥 gpu-burn already running (PID: {_gpu_burn_pid})"
             
             test_result = mo.callout(
                 mo.md(f"""
-                🔥 **gpu-burn Stress Test RUNNING!**
+                🔥 **gpu-burn Stress Test ACTIVE!**
                 
+                **Status**: {_status_msg}  
                 **Tool**: Industry-standard [gpu-burn](https://github.com/wilicc/gpu-burn)  
                 **Binary**: `{_gpu_burn_path}`  
-                **Duration**: {_duration} seconds per cycle  
-                **GPUs**: {_gpus_tested}  
+                **Process ID**: {_gpu_burn_pid}  
                 **Intensity**: MAXIMUM (95% GPU memory + double precision)
                 
-                📊 **Status**: Active stress test  
-                ⚠️ **This will keep re-running while enabled**
+                📊 **Metrics are now updating in real-time!**  
+                ⚠️ **gpu-burn runs in background** - metrics will refresh while it runs
                 
-                Watch metrics above auto-refresh to see 100% utilization!  
-                Toggle off to stop.
-                
-                **Output** (last 1000 chars):
-                ```
-                {_full_output[-1000:] if _full_output else "Starting gpu-burn..."}
-                ```
+                Watch the metrics above auto-refresh to see 100% utilization!  
+                Toggle off to stop gpu-burn.
                 """),
                 kind="info"
             )
             
-        except subprocess.TimeoutExpired as e:
-            test_result = mo.callout(
-                mo.md(f"⏱️ **gpu-burn still running** (taking longer than expected)\n\nOutput so far:\n```\n{e.stdout[:500] if e.stdout else 'No output yet'}\n```"),
-                kind="warn"
-            )
         except Exception as e:
             test_result = mo.callout(
-                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\n**Path tried**: `{_gpu_burn_path}`\n\nTry running manually: `{_gpu_burn_path} 10`"),
+                mo.md(f"❌ **gpu-burn test failed**: {str(e)}\n\n**Path tried**: `{_gpu_burn_path}`"),
                 kind="danger"
             )
     else:
-        test_result = mo.md("""
-        💡 **Toggle the switch above to start gpu-burn stress testing**
+        # Kill any running gpu-burn processes when switch is off
+        import psutil
         
-        This uses the industry-standard **gpu-burn** tool:
-        - Automatically stresses ALL GPUs simultaneously
-        - Uses 95% of GPU memory by default
-        - Double-precision floating point operations
-        - Battle-tested stress testing (used in datacenters worldwide)
-        - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
+        _killed_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.info['cmdline'] and 'gpu_burn' in ' '.join(proc.info['cmdline']):
+                    proc.kill()
+                    _killed_processes.append(proc.info['pid'])
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
         
-        **Runs 60-second cycles continuously while enabled!**
-        
-        Enable auto-refresh above to watch GPUs hit 100%!
-        """)
+        if _killed_processes:
+            test_result = mo.callout(
+                mo.md(f"🛑 **Stopped gpu-burn** (killed PID: {', '.join(map(str, _killed_processes))})\n\nGPU will cool down now. Metrics will return to idle state."),
+                kind="success"
+            )
+        else:
+            test_result = mo.md("""
+            💡 **Toggle the switch above to start gpu-burn stress testing**
+            
+            This uses the industry-standard **gpu-burn** tool:
+            - Automatically stresses ALL GPUs simultaneously
+            - Uses 95% of GPU memory by default
+            - Double-precision floating point operations
+            - Battle-tested stress testing (used in datacenters worldwide)
+            - Works on L40S, A100, H100, H200, B200, and all NVIDIA GPUs
+            
+            **Runs in background so metrics update in real-time!**
+            
+            Enable auto-refresh above to watch GPUs hit 100%!
+            """)
     
     test_result
     return test_result,
