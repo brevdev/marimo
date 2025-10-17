@@ -158,18 +158,11 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    # Auto-refresh controls - default to 5s for smooth experience
-    # Using mo.ui.refresh but with CSS transitions for smoothness
-    auto_refresh = mo.ui.refresh(
-        default_interval="5s",
-        options=["2s", "5s", "10s", "30s"]
-    )
+    # Auto-refresh at 2s - smooth CSS transitions make it feel seamless
+    # No UI needed since it just works!
+    auto_refresh = mo.ui.refresh(default_interval="2s")
     
-    mo.hstack([
-        mo.md("**Auto-refresh:**"),
-        auto_refresh,
-        mo.md("*(Metrics update with smooth transitions)*")
-    ])
+    # Return silently - no visible UI element
     return auto_refresh,
 
 
