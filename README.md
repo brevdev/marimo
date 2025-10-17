@@ -33,6 +33,7 @@ Deploy Marimo with GPU access instantly using these pre-configured environments:
 
 | GPU Configuration | vRAM | Use Case | Deploy |
 |-------------------|------|----------|--------|
+| **1x L4** | 24GB | Entry-Level, Learning, Small Models, Cost-Efficient Experimentation | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AyUxoxN1PiXP3PWSMFzI96LoJ) |
 | **1x L40S** | 48GB | General ML, Training, Inference | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AI5Pvj2cwyqzv50io8WJBpK4t) |
 | **2x L40S** | 96GB | Cost-Effective Multi-GPU, Dual Workloads, Medium-Scale Training | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AwGQISnFO1OpD4qNYsDOhBe7o) |
 | **4x L40S** | 192GB | Budget-Friendly 4-Way Training, Cost-Optimized Distributed Workloads | [![Click here to deploy.](https://brev-assets.s3.us-west-1.amazonaws.com/nv-lb-dark.svg)](https://brev.nvidia.com/launchable/deploy?launchableID=env-34AwTkK08OIOdJLGMwXuD18xxay) |
