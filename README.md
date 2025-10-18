@@ -215,12 +215,14 @@ If you want to use this setup script in your own repo:
 
 ```bash
 # Download the setup script
-curl -O https://raw.githubusercontent.com/brevdev/marimo/main/setup.sh
+curl -O https://raw.githubusercontent.com/brevdev/setup-scripts/main/marimo/setup.sh
 chmod +x setup.sh
 
 # Run it
 bash setup.sh
 ```
+
+The setup script is maintained in the [brevdev/setup-scripts](https://github.com/brevdev/setup-scripts/blob/main/marimo/setup.sh) repository.
 
 ## Resources
 
@@ -231,4 +233,7 @@ bash setup.sh
 
 ## Contributing
 
-Have ideas for improving this setup or want to add more GPU examples? Contributions are welcome! Open an issue or submit a PR at [github.com/brevdev/marimo](https://github.com/brevdev/marimo).
+Have ideas for improving this setup or want to add more GPU examples? Contributions are welcome! 
+
+- **Setup script improvements**: [github.com/brevdev/setup-scripts](https://github.com/brevdev/setup-scripts)
+- **GPU notebooks and examples**: [github.com/brevdev/marimo](https://github.com/brevdev/marimo)
