@@ -344,15 +344,45 @@ def __(mo, psutil, stress_test_running, subprocess):
             else:
                 _install_msg.append("✅ Build tools found")
             
-            # Check for CUDA toolkit (needed for gpu-burn compilation)
+            # Check for CUDA toolkit in common locations
+            _cuda_paths = [
+                "/usr/local/cuda/bin",
+                "/usr/local/cuda-12.1/bin",
+                "/usr/local/cuda-12.0/bin",
+                "/usr/local/cuda-11.8/bin",
+                "/usr/local/cuda-11.7/bin",
+                "/opt/cuda/bin",
+            ]
+            
+            _nvcc_path = None
+            _cuda_bin_dir = None
+            
+            # First check if nvcc is already in PATH
             _nvcc_result = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
             if _nvcc_result.returncode == 0:
-                _install_msg.append("✅ CUDA toolkit found")
+                _nvcc_path = _nvcc_result.stdout.strip()
+                _cuda_bin_dir = os.path.dirname(_nvcc_path)
+                _install_msg.append(f"✅ CUDA toolkit found in PATH: {_cuda_bin_dir}")
             else:
-                _install_msg.append("⚠️ CUDA toolkit not found - using PyTorch fallback")
-                _install_msg.append("*(This is normal - CUDA dev headers often not installed)*")
+                # Check common CUDA locations
+                for cuda_path in _cuda_paths:
+                    nvcc_candidate = os.path.join(cuda_path, "nvcc")
+                    if os.path.exists(nvcc_candidate):
+                        _nvcc_path = nvcc_candidate
+                        _cuda_bin_dir = cuda_path
+                        _install_msg.append(f"✅ CUDA toolkit found: {_cuda_bin_dir}")
+                        _install_msg.append(f"   (adding to PATH for this session)")
+                        # Add to PATH for this process and subprocesses
+                        os.environ["PATH"] = f"{_cuda_bin_dir}:{os.environ.get('PATH', '')}"
+                        break
+            
+            if not _nvcc_path:
+                _install_msg.append("ℹ️ CUDA development toolkit not found in:")
+                for p in _cuda_paths[:3]:  # Show first 3 paths
+                    _install_msg.append(f"   - {p}")
+                _install_msg.append("   Using continuous PyTorch stress test instead")
                 _gpu_burn_path = None
-                raise Exception("CUDA toolkit not available for compilation")
+                raise Exception("CUDA toolkit not available")
             
             _install_msg.append("📦 Compiling gpu-burn from source...")
             
@@ -473,69 +503,119 @@ def __(mo, psutil, stress_test_running, subprocess):
                     kind="danger"
                 )
         else:
-            # PyTorch fallback - run intensive operations on EACH cell execution
-            # With 2s auto-refresh, this keeps GPUs constantly stressed
+            # Continuous PyTorch fallback - runs as background process
             try:
-                _torch_test_msg = []
-                _torch_test_msg.append("🔥 **PyTorch Stress Test ACTIVE!**\n")
+                # Check if our background stress script is already running
+                _stress_running = False
+                _stress_pid = None
+                for proc in psutil.process_iter(['pid', 'cmdline']):
+                    try:
+                        cmdline_str = ' '.join(proc.info['cmdline']) if proc.info['cmdline'] else ''
+                        if 'pytorch_gpu_stress.py' in cmdline_str:
+                            _stress_running = True
+                            _stress_pid = proc.info['pid']
+                            break
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
                 
-                torch.cuda.empty_cache()
+                if not _stress_running:
+                    # Create continuous background stress test script
+                    _stress_script = os.path.expanduser("~/pytorch_gpu_stress.py")
+                    _stress_script_content = '''#!/usr/bin/env python3
+import torch
+import time
+import sys
+
+def stress_gpu(gpu_id):
+    """Continuously stress a single GPU with maximum compute"""
+    device = f'cuda:{gpu_id}'
+    torch.cuda.set_device(device)
+    
+    # Try different sizes to fit in GPU memory
+    for size in [16384, 12288, 8192, 4096]:
+        try:
+            a = torch.randn(size, size, device=device, dtype=torch.float32)
+            b = torch.randn(size, size, device=device, dtype=torch.float32)
+            print(f"GPU {gpu_id}: Stress test running with {size}x{size} matrices", flush=True)
+            break
+        except RuntimeError:
+            continue
+    
+    # Continuous loop - runs until killed
+    iteration = 0
+    while True:
+        try:
+            # Intensive matrix operations
+            c = torch.matmul(a, b)
+            d = torch.matmul(c, a)
+            e = torch.matmul(d, b)
+            result = torch.relu(e)
+            torch.cuda.synchronize(device)
+            
+            # Rotate tensors to prevent optimization
+            a, b = result, a
+            
+            iteration += 1
+            if iteration % 100 == 0:
+                sys.stdout.flush()
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"GPU {gpu_id} error: {e}", flush=True)
+            time.sleep(1)
+
+if __name__ == "__main__":
+    gpu_count = torch.cuda.device_count()
+    print(f"Stressing {gpu_count} GPU(s) continuously...", flush=True)
+    
+    if gpu_count == 1:
+        stress_gpu(0)
+    else:
+        import multiprocessing
+        processes = []
+        for gpu_id in range(gpu_count):
+            p = multiprocessing.Process(target=stress_gpu, args=(gpu_id,))
+            p.start()
+            processes.append(p)
+        for p in processes:
+            p.join()
+'''
+                    
+                    with open(_stress_script, 'w') as f:
+                        f.write(_stress_script_content)
+                    os.chmod(_stress_script, 0o755)
+                    
+                    # Start background process
+                    _process = subprocess.Popen(
+                        ["python3", _stress_script],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        start_new_session=True  # Detach from parent
+                    )
+                    _stress_pid = _process.pid
+                    time.sleep(0.5)  # Give it time to start
+                    
+                    _status_msg = f"✅ Started continuous PyTorch stress (PID: {_stress_pid})"
+                else:
+                    _status_msg = f"🔥 PyTorch stress already running (PID: {_stress_pid})"
+                
                 _gpu_count = torch.cuda.device_count()
-                
-                # Run intensive operations RIGHT NOW (synchronously) on ALL GPUs in parallel
-                # This cell re-executes every 2s due to auto-refresh, keeping GPUs busy
-                import threading
-                _overall_start = time.time()
-                _ops_per_gpu = [0] * _gpu_count
-                
-                def _stress_gpu(gpu_id):
-                    device = f'cuda:{gpu_id}'
-                    torch.cuda.set_device(device)
-                    
-                    # Large matrix operations - run for ~1.5 seconds per GPU
-                    size = 4096
-                    a = torch.randn(size, size, device=device, dtype=torch.float32)
-                    b = torch.randn(size, size, device=device, dtype=torch.float32)
-                    
-                    _gpu_start = time.time()
-                    _ops_count = 0
-                    
-                    # Do many operations in tight loop for 1.5 seconds
-                    while time.time() - _gpu_start < 1.5:
-                        c = torch.matmul(a, b)
-                        d = torch.matmul(c, a)
-                        e = torch.matmul(d, b)
-                        result = torch.relu(e)
-                        torch.cuda.synchronize(device)
-                        _ops_count += 3
-                        # Rotate to avoid caching
-                        a, b = result, a
-                    
-                    _ops_per_gpu[gpu_id] = _ops_count
-                
-                # Run stress on all GPUs in parallel using threads
-                _threads = []
-                for gpu_id in range(_gpu_count):
-                    t = threading.Thread(target=_stress_gpu, args=(gpu_id,))
-                    t.start()
-                    _threads.append(t)
-                
-                # Wait for all threads to complete
-                for t in _threads:
-                    t.join()
-                
-                _elapsed = time.time() - _overall_start
-                _total_ops = sum(_ops_per_gpu)
-                
-                _torch_test_msg.append(f"✅ **Stressing {_gpu_count} GPU(s)** synchronously")
-                _torch_test_msg.append(f"⚡ **This cycle**: {_total_ops} matrix operations in {_elapsed:.2f}s")
-                _torch_test_msg.append(f"🔄 **Auto-refresh**: Repeats every 2 seconds")
-                _torch_test_msg.append(f"📊 **Should see ~80-100% utilization** (depends on GPU)")
-                _torch_test_msg.append(f"\n💡 Using 4096x4096 matrices with matmul chains")
-                _torch_test_msg.append(f"⚠️ Toggle OFF to stop")
-                
                 test_result = mo.callout(
-                    mo.md("\n".join(_torch_test_msg)),
+                    mo.md(f"""
+                    🔥 **Continuous PyTorch GPU Stress Test ACTIVE!**
+                    
+                    **Status**: {_status_msg}  
+                    **GPUs**: {_gpu_count}  
+                    **Type**: Continuous background process  
+                    **Intensity**: Maximum (large matrix operations)
+                    
+                    📊 **Runs continuously** until you toggle off  
+                    📈 Watch metrics above hit 90-100% utilization  
+                    🔥 Stresses ALL GPUs simultaneously
+                    
+                    *This runs as a background process - just like gpu-burn!*  
+                    Toggle off to stop.
+                    """),
                     kind="info"
                 )
                 
@@ -551,8 +631,8 @@ def __(mo, psutil, stress_test_running, subprocess):
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 cmdline = ' '.join(proc.info['cmdline']) if proc.info['cmdline'] else ''
-                # Kill gpu_burn or gpu-stress processes
-                if 'gpu_burn' in cmdline or 'gpu-stress' in cmdline:
+                # Kill gpu_burn, gpu-stress, or pytorch_gpu_stress processes
+                if 'gpu_burn' in cmdline or 'gpu-stress' in cmdline or 'pytorch_gpu_stress.py' in cmdline:
                     proc.kill()
                     _killed_processes.append(proc.info['pid'])
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -590,15 +670,16 @@ def __(mo, psutil, stress_test_running, subprocess):
                 test_result = mo.md("""
                 💡 **Toggle the switch above to start GPU stress testing**
                 
-                **Using PyTorch fallback** (gpu-burn unavailable):
-                - Tries `gpu-stress` package first (continuous matrix operations)
-                - Falls back to manual threading if gpu-stress unavailable
+                **Using continuous PyTorch stress test**:
+                - Runs as background process (just like gpu-burn!)
+                - Maximum compute intensity with large matrix operations
                 - Stresses ALL GPUs simultaneously
-                - Continuous compute operations to reach 100% utilization
-                - Watch metrics auto-refresh to see GPUs hit maximum!
+                - Continuous operation until you toggle off
+                - 90-100% GPU utilization
+                - Works without CUDA development toolkit
                 
-                *Note: gpu-burn requires CUDA development headers for compilation.*
-                *PyTorch fallback provides intensive stress testing without CUDA toolkit.*
+                *This is a true continuous stress test, not intermittent.*
+                *Watch metrics hit 90-100% utilization on all GPUs!*
                 """)
     
     test_result
