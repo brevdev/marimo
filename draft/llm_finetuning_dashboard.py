@@ -44,22 +44,150 @@ def __():
     import subprocess
     import time
     from dataclasses import dataclass
-    from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
     from torch.utils.data import Dataset, DataLoader
     import json
+    
+    # Check for transformers library
+    try:
+        import transformers
+        TRANSFORMERS_AVAILABLE = True
+        TRANSFORMERS_VERSION = transformers.__version__
+    except ImportError:
+        TRANSFORMERS_AVAILABLE = False
+        TRANSFORMERS_VERSION = None
+    
     return (
         mo, torch, nn, np, pd, go, Optional, Dict, List, Tuple,
-        subprocess, time, dataclass, AutoModelForCausalLM, AutoTokenizer,
-        get_linear_schedule_with_warmup, Dataset, DataLoader, json
+        subprocess, time, dataclass, Dataset, DataLoader, json,
+        TRANSFORMERS_AVAILABLE, TRANSFORMERS_VERSION
     )
 
 
 @app.cell
-def __(mo):
+def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
+    """Auto-install transformers if missing"""
+    install_status = None
+    
+    if not TRANSFORMERS_AVAILABLE:
+        with mo.status.spinner(
+            title="📦 Installing transformers library...",
+            subtitle="First-time setup - this will take 1-2 minutes"
+        ):
+            try:
+                mo.output.append(mo.md("🔄 **Auto-installing transformers library...**"))
+                
+                result = subprocess.run(
+                    ["pip", "install", "--upgrade", "transformers"],
+                    capture_output=True,
+                    text=True,
+                    timeout=180
+                )
+                
+                if result.returncode == 0:
+                    install_status = "success"
+                    mo.stop(
+                        True,
+                        mo.callout(
+                            mo.md("""
+                            ✅ **Installation Complete!**
+                            
+                            The transformers library has been installed successfully.
+                            
+                            **→ Please restart the notebook now** (stop and run again) for changes to take effect.
+                            
+                            This is a one-time setup - you won't see this message again.
+                            """),
+                            kind="success"
+                        )
+                    )
+                else:
+                    install_status = "failed"
+                    mo.stop(
+                        True,
+                        mo.callout(
+                            mo.md(f"""
+                            ❌ **Auto-installation Failed**
+                            
+                            Could not automatically install transformers.
+                            
+                            **Error**: {result.stderr[:500]}
+                            
+                            **Please install manually**:
+                            ```bash
+                            pip install transformers
+                            ```
+                            
+                            Then restart the notebook.
+                            """),
+                            kind="danger"
+                        )
+                    )
+            except subprocess.TimeoutExpired:
+                install_status = "timeout"
+                mo.stop(
+                    True,
+                    mo.callout(
+                        mo.md("""
+                        ⏱️ **Installation Timeout**
+                        
+                        The installation is taking longer than expected.
+                        
+                        **Please install manually in a terminal**:
+                        ```bash
+                        pip install transformers
+                        ```
+                        
+                        Then restart the notebook.
+                        """),
+                        kind="warn"
+                    )
+                )
+            except Exception as e:
+                install_status = "error"
+                mo.stop(
+                    True,
+                    mo.callout(
+                        mo.md(f"""
+                        ❌ **Installation Error**
+                        
+                        {str(e)}
+                        
+                        **Please install manually**:
+                        ```bash
+                        pip install transformers
+                        ```
+                        
+                        Then restart the notebook.
+                        """),
+                        kind="danger"
+                    )
+                )
+    
+    return install_status,
+
+
+@app.cell
+def __(TRANSFORMERS_AVAILABLE):
+    """Import transformers after check"""
+    if TRANSFORMERS_AVAILABLE:
+        from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+    else:
+        # Dummy imports to avoid errors
+        AutoModelForCausalLM = None
+        AutoTokenizer = None
+        get_linear_schedule_with_warmup = None
+    
+    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+
+
+@app.cell
+def __(mo, TRANSFORMERS_VERSION):
     """Title and description"""
+    version_info = f" (transformers v{TRANSFORMERS_VERSION})" if TRANSFORMERS_VERSION else ""
+    
     mo.md(
-        """
-        # 🧠 Interactive LLM Fine-Tuning Dashboard
+        f"""
+        # 🧠 Interactive LLM Fine-Tuning Dashboard{version_info}
         
         **Fine-tune large language models** with LoRA (Low-Rank Adaptation) and monitor 
         training progress in real-time. This notebook demonstrates efficient fine-tuning
@@ -356,13 +484,30 @@ def __(
                 # Initialize model and tokenizer (using small GPT-2 for demo)
                 mo.output.append(mo.md("**Step 1/6:** Loading GPT-2 model..."))
                 model_name = "gpt2"
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                tokenizer.pad_token = tokenizer.eos_token
                 
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
-                ).to(device)
+                # Load tokenizer
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(model_name)
+                    tokenizer.pad_token = tokenizer.eos_token
+                except Exception as e:
+                    raise ImportError(
+                        f"Failed to load tokenizer. Please ensure transformers is properly installed.\n"
+                        f"Run: pip install --upgrade transformers\n"
+                        f"Original error: {str(e)}"
+                    )
+                
+                # Load model
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
+                    ).to(device)
+                except Exception as e:
+                    raise ImportError(
+                        f"Failed to load GPT-2 model. Please ensure transformers is properly installed.\n"
+                        f"Run: pip install --upgrade transformers torch\n"
+                        f"Original error: {str(e)}"
+                    )
                 
                 # Inject LoRA
                 mo.output.append(mo.md("**Step 2/6:** Injecting LoRA layers..."))
@@ -516,10 +661,49 @@ def __(
 **GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
                     """
                 }
+            except (ImportError, ModuleNotFoundError) as e:
+                # Handle transformers/model loading errors
+                training_results = {
+                    'error': 'Missing Dependencies',
+                    'suggestion': f"""
+**Failed to load model or dependencies!**
+
+**Error**: {str(e)}
+
+**Solution**:
+Install or upgrade the transformers library:
+
+```bash
+pip install --upgrade transformers torch
+```
+
+**For complete setup**:
+```bash
+pip install transformers torch numpy pandas plotly
+```
+
+After installation, restart the notebook and try again.
+
+**Need help?** Check [HuggingFace Transformers Docs](https://huggingface.co/docs/transformers)
+                    """
+                }
             except Exception as e:
                 training_results = {
                     'error': str(e),
-                    'error_type': type(e).__name__
+                    'error_type': type(e).__name__,
+                    'suggestion': f"""
+**Unexpected Error**: {type(e).__name__}
+
+**Details**: {str(e)}
+
+**Common solutions**:
+1. Check that all dependencies are installed
+2. Restart the notebook kernel
+3. Try reducing batch size or model complexity
+4. Check GPU memory availability
+
+If the error persists, please report it with the error details above.
+                    """
                 }
     
     training_results
