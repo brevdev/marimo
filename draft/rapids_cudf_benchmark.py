@@ -550,8 +550,8 @@ def __(
         torch.manual_seed(42)
         
         try:
-        # Check GPU memory and adjust dataset size if needed
-        if device.type == "cuda":
+            # Check GPU memory and adjust dataset size if needed
+            if device.type == "cuda":
                 gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
                 requested_rows = 10 ** dataset_size.value
                 
