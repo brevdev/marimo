@@ -718,7 +718,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 x=_results['operation'],
                 y=_results['speedup'],
                 marker_color='#4c6ef5',
-                text=[f"{s:.1f}x" for s in _results['speedup']],
+                text=[f"{s:.1f}x" if s is not None else "N/A" for s in _results['speedup']],
                 textposition='outside'
             ))
             
@@ -729,10 +729,16 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 height=400
             )
             
-            # Calculate overall statistics
-            avg_speedup = sum(_results['speedup']) / len(_results['speedup'])
-            max_speedup = max(_results['speedup'])
-            min_speedup = min(_results['speedup'])
+            # Calculate overall statistics (filter out None values)
+            valid_speedups = [s for s in _results['speedup'] if s is not None]
+            if valid_speedups:
+                avg_speedup = sum(valid_speedups) / len(valid_speedups)
+                max_speedup = max(valid_speedups)
+                min_speedup = min(valid_speedups)
+            else:
+                avg_speedup = 0
+                max_speedup = 0
+                min_speedup = 0
             
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
@@ -775,8 +781,8 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                     **Pandas Performance Summary**:
                     - Dataset Size: **{_n_rows:,}** rows
                     - Operations Tested: **{len(_results['operation'])}**
-                    - Total Time: **{sum(_results['pandas_time']):.2f}s**
-                    - Average Time per Operation: **{sum(_results['pandas_time'])/len(_results['pandas_time']):.3f}s**
+                    - Total Time: **{sum(t for t in _results['pandas_time'] if t is not None):.2f}s**
+                    - Average Time per Operation: **{sum(t for t in _results['pandas_time'] if t is not None)/len([t for t in _results['pandas_time'] if t is not None]):.3f}s**
                     
                     💡 With cuDF (GPU), these operations could be **10-100x faster**!
                     """),
