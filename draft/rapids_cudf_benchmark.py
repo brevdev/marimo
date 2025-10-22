@@ -148,7 +148,7 @@ def __(mo, cudf_available, install_result):
 def __(mo, cudf_available):
     """Interactive benchmark controls"""
     dataset_size = mo.ui.slider(
-        start=3, stop=7, step=1, value=6,  # Default to 1M rows for meaningful GPU speedup
+        start=3, stop=8, step=1, value=6,  # Default to 1M rows, max 100M to push GPU to 100%
         label="Dataset Size (10^x rows)", show_value=True
     )
     
@@ -190,7 +190,7 @@ def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, cudf_availa
             
             {'✅ cuDF available - you can compare CPU vs GPU!' if cudf_available else '⚠️ cuDF not installed - running CPU-only benchmarks'}
             
-            {'💡 Tip: Try "CPU vs GPU" mode to see the speedup!' if cudf_available else '💡 Restart the notebook after cuDF installs!'}
+            {'💡 **Pro tip**: Try 10M-100M rows (slider position 7-8) to push GPU to 100% utilization and see 20-50x speedup!' if cudf_available else '💡 Restart the notebook after cuDF installs!'}
             """),
             kind="info" if cudf_available else "warn"
         )
@@ -769,8 +769,9 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             xaxis_title="Operation",
             yaxis_title="Time (seconds)",
             barmode='group',
-            height=400,
-            hovermode='x unified'
+            height=450,
+            hovermode='x unified',
+            margin=dict(t=80, b=50, l=50, r=50)  # Extra top margin for bar labels
         )
         
         # Show results - use normalized _run_gpu flag instead of checking mode strings
@@ -790,7 +791,8 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 title="GPU Speedup Factor",
                 xaxis_title="Operation",
                 yaxis_title="Speedup (higher is better)",
-                height=400
+                height=450,
+                margin=dict(t=80, b=50, l=50, r=50)  # Extra top margin for bar labels
             )
             
             # Calculate overall statistics (filter out None values)
@@ -805,15 +807,18 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 min_speedup = 0
             
             # Determine callout kind and message based on performance
-            if avg_speedup >= 2:
+            if avg_speedup >= 5:
                 _perf_kind = "success"
-                _perf_note = "🚀 GPU is significantly faster on this dataset!"
+                _perf_note = "🚀 GPU is crushing it! This is the sweet spot for GPU acceleration."
+            elif avg_speedup >= 2:
+                _perf_kind = "success"
+                _perf_note = "✅ GPU is significantly faster! Try 10M-100M rows to push GPU to 100% utilization."
             elif avg_speedup >= 1:
                 _perf_kind = "info"
-                _perf_note = "💡 GPU shows modest gains. Try increasing dataset size for better speedup."
+                _perf_note = "💡 GPU shows modest gains. Increase dataset size (10M+ rows) for dramatic speedup."
             else:
                 _perf_kind = "warn"
-                _perf_note = "⚠️ CPU is faster on this dataset size. GPU excels with 5M+ rows due to parallelism overhead."
+                _perf_note = "⚠️ CPU is faster on this dataset size. GPU excels with 10M+ rows due to parallelism overhead."
             
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
