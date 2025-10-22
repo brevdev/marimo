@@ -567,15 +567,20 @@ def __(
                 # Run benchmarks for each operation based on mode
                 _mode = mode_toggle.value
                 
+                # Normalize mode - dropdown returns labels, not keys
+                _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
+                _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
+                
                 # Convert pandas DataFrame to cuDF once if needed
                 _cudf_df = None
                 _debug_msgs = []
                 _debug_msgs.append(f"Mode: {_mode}")
+                _debug_msgs.append(f"_run_cpu: {_run_cpu}, _run_gpu: {_run_gpu}")
                 _debug_msgs.append(f"cudf_available: {cudf_available}")
                 _debug_msgs.append(f"cudf_module: {cudf_module}")
                 _debug_msgs.append(f"cudf_module is not None: {cudf_module is not None}")
                 
-                if _mode in ['gpu', 'both'] and cudf_available and cudf_module is not None:
+                if _run_gpu and cudf_available and cudf_module is not None:
                     try:
                         _cudf_df = cudf_module.from_pandas(pandas_df)
                         _debug_msgs.append(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
@@ -600,8 +605,8 @@ def __(
                     bench_func = benchmark_functions[op]
                     print(f"\n🔄 Running {op}...")
                     
-                    # Pandas benchmark (run if mode is 'cpu' or 'both')
-                    if _mode in ['cpu', 'both']:
+                    # Pandas benchmark (run if mode includes CPU)
+                    if _run_cpu:
                         try:
                             pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
                             print(f"  ✅ Pandas: {pandas_time:.4f}s ({result_size:,} rows)")
@@ -611,8 +616,8 @@ def __(
                     else:
                         pandas_time, result_size = None, 0
                     
-                    # cuDF benchmark (run if mode is 'gpu' or 'both' AND cuDF available)
-                    if _mode in ['gpu', 'both'] and _cudf_df is not None:
+                    # cuDF benchmark (run if mode includes GPU AND cuDF available)
+                    if _run_gpu and _cudf_df is not None:
                         try:
                             cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
                             speedup = pandas_time / cudf_time if (pandas_time and cudf_time) else None
@@ -715,23 +720,28 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
         _mode = benchmark_results.get('mode', 'cpu')
         table_data = {'Operation': _results['operation']}
         
+        # Extract mode flags from benchmark_results
+        _mode = benchmark_results['mode']
+        _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
+        _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
+        
         # Add Pandas times if they were run
-        if _mode in ['cpu', 'both'] and any(_results['pandas_time']):
+        if _run_cpu and any(_results['pandas_time']):
             table_data['Pandas Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['pandas_time']]
         
         # Add cuDF times if they were run
-        if _mode in ['gpu', 'both'] and cudf_available and any(_results['cudf_time']):
+        if _run_gpu and cudf_available and any(_results['cudf_time']):
             table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['cudf_time']]
         
         # Add speedup if both were run
-        if _mode == 'both' and any(_results['speedup']):
+        if _run_cpu and _run_gpu and any(_results['speedup']):
             table_data['Speedup'] = [f"{s:.2f}x" if s else "N/A" for s in _results['speedup']]
         
         # Create performance visualization
         fig = go.Figure()
         
         # Add Pandas performance if run
-        if _mode in ['cpu', 'both'] and any(_results['pandas_time']):
+        if _run_cpu and any(_results['pandas_time']):
             pandas_times = [t if t else 0 for t in _results['pandas_time']]
             fig.add_trace(go.Bar(
                 name='Pandas (CPU)',
@@ -743,7 +753,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             ))
         
         # Add cuDF if run
-        if _mode in ['gpu', 'both'] and cudf_available and any(_results['cudf_time']):
+        if _run_gpu and cudf_available and any(_results['cudf_time']):
             cudf_times = [t if t else 0 for t in _results['cudf_time']]
             fig.add_trace(go.Bar(
                 name='cuDF (GPU)',
