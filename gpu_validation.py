@@ -388,15 +388,14 @@ def __(mo, psutil, stress_test_running, subprocess):
                     # Check if apt is available (Debian/Ubuntu systems)
                     _apt_check = subprocess.run(["which", "apt-get"], capture_output=True, text=True)
                     if _apt_check.returncode == 0:
-                        _install_msg.append("   📋 Step 1/3: Updating package lists...")
-                        
-                        # Update apt cache first
-                        _apt_update = subprocess.run(
-                            ["sudo", "apt-get", "update", "-qq"],
-                            capture_output=True,
-                            text=True,
-                            timeout=60
-                        )
+                        with mo.status.spinner(title="📋 Step 1/3: Updating package lists..."):
+                            # Update apt cache first
+                            _apt_update = subprocess.run(
+                                ["sudo", "apt-get", "update", "-qq"],
+                                capture_output=True,
+                                text=True,
+                                timeout=60
+                            )
                         
                         if _apt_update.returncode != 0:
                             _install_msg.append("   ⚠️ apt-get update had warnings (continuing anyway)")
@@ -404,16 +403,18 @@ def __(mo, psutil, stress_test_running, subprocess):
                             _install_msg.append("   ✅ Package lists updated")
                         
                         _install_msg.append("")
-                        _install_msg.append("   📦 Step 2/3: Installing nvidia-cuda-toolkit...")
-                        _install_msg.append("   (Downloading ~2GB of packages, please wait...)")
                         
-                        # Install cuda toolkit
-                        _cuda_install = subprocess.run(
-                            ["sudo", "apt-get", "install", "-y", "nvidia-cuda-toolkit"],
-                            capture_output=True,
-                            text=True,
-                            timeout=300  # 5 minute timeout
-                        )
+                        with mo.status.spinner(
+                            title="📦 Step 2/3: Installing nvidia-cuda-toolkit...",
+                            subtitle="Downloading ~2GB of packages, this will take 2-3 minutes..."
+                        ):
+                            # Install cuda toolkit
+                            _cuda_install = subprocess.run(
+                                ["sudo", "apt-get", "install", "-y", "nvidia-cuda-toolkit"],
+                                capture_output=True,
+                                text=True,
+                                timeout=300  # 5 minute timeout
+                            )
                         
                         if _cuda_install.returncode == 0:
                             _install_msg.append("   ✅ CUDA toolkit installed successfully (~5.4GB)")
@@ -463,24 +464,25 @@ def __(mo, psutil, stress_test_running, subprocess):
             _home_dir = os.path.expanduser("~")
             _gpu_burn_dir = os.path.join(_home_dir, "gpu-burn")
             
-            if not os.path.exists(_gpu_burn_dir):
-                subprocess.run(
-                    ["git", "clone", "https://github.com/wilicc/gpu-burn.git", _gpu_burn_dir],
-                    check=True,
-                    timeout=30,
-                    cwd=_home_dir,
+            with mo.status.spinner(title="🔨 Step 4: Compiling gpu-burn from source...", subtitle="Cloning and compiling..."):
+                if not os.path.exists(_gpu_burn_dir):
+                    subprocess.run(
+                        ["git", "clone", "https://github.com/wilicc/gpu-burn.git", _gpu_burn_dir],
+                        check=True,
+                        timeout=30,
+                        cwd=_home_dir,
+                        capture_output=True,
+                        text=True
+                    )
+                
+                # Run make with captured output for better error messages
+                _make_result = subprocess.run(
+                    ["make"], 
+                    timeout=60, 
+                    cwd=_gpu_burn_dir,
                     capture_output=True,
                     text=True
                 )
-            
-            # Run make with captured output for better error messages
-            _make_result = subprocess.run(
-                ["make"], 
-                timeout=60, 
-                cwd=_gpu_burn_dir,
-                capture_output=True,
-                text=True
-            )
             
             if _make_result.returncode != 0:
                 _install_msg.append(f"❌ Compilation failed (exit code {_make_result.returncode})")
