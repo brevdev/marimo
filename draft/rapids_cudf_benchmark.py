@@ -15,12 +15,14 @@ Features:
 - Multiple operation types: filtering, groupby, joins, sorting
 
 Requirements:
-- NVIDIA GPU with 4GB+ VRAM (works on all data center GPUs)
-- Tested on: L40S (48GB), A100 (40/80GB), H100 (80GB), H200 (141GB), B200 (180GB), RTX PRO 6000 (48GB)
+- NVIDIA GPU with 4GB+ VRAM (works on all NVIDIA datacenter GPUs)
+- Tested on: L4, L40, L40S, A10, A100, H100, H200, B100, B200, GH200, GB200
+- Also works on: RTX 4000 Ada, RTX 5000 Ada, RTX 6000 Ada, and other NVIDIA professional GPUs
 - CUDA 11.4+
 - RAPIDS cuDF installed (optional, falls back to pandas)
 - Dataset size automatically scales with available memory
-- Single GPU only (cuDF uses GPU 0)
+- Multi-GPU aware: Monitors all GPUs, uses GPU 0 for compute by default
+- For multi-GPU data distribution: Install dask-cudf and dask-cuda
 
 Author: Brev.dev Team
 Date: 2025-10-17
@@ -53,9 +55,22 @@ def __():
         CUDF_AVAILABLE = False
         cudf = None
     
+    # Try importing Dask-cuDF for multi-GPU support
+    try:
+        import dask_cudf
+        from dask_cuda import LocalCUDACluster
+        from dask.distributed import Client
+        DASK_CUDF_AVAILABLE = True
+    except ImportError:
+        DASK_CUDF_AVAILABLE = False
+        dask_cudf = None
+        LocalCUDACluster = None
+        Client = None
+    
     return (
         mo, np, pd, go, px, Dict, List, Tuple, Optional,
-        time, subprocess, torch, cudf, CUDF_AVAILABLE
+        time, subprocess, torch, cudf, CUDF_AVAILABLE,
+        dask_cudf, LocalCUDACluster, Client, DASK_CUDF_AVAILABLE
     )
 
 
@@ -250,10 +265,16 @@ def __(torch, mo, subprocess):
             )
         )
     
+    # Count GPUs
+    num_gpus = len(gpu_info['gpus'])
+    multi_gpu_msg = ""
+    if num_gpus > 1:
+        multi_gpu_msg = f"\n\n💡 **{num_gpus} GPUs detected!** This notebook monitors all GPUs. cuDF will use GPU 0 by default. For true multi-GPU data distribution, use Dask-cuDF (install: `pip install dask-cudf dask-cuda`)."
+    
     # Display GPU info
     mo.callout(
         mo.vstack([
-            mo.md("**✅ GPU Detected for RAPIDS**"),
+            mo.md(f"**✅ {num_gpus} GPU{'s' if num_gpus > 1 else ''} Detected for RAPIDS**{multi_gpu_msg}"),
             mo.ui.table(gpu_info['gpus'])
         ]),
         kind="success"
@@ -261,7 +282,7 @@ def __(torch, mo, subprocess):
     
     device = torch.device("cuda")
     
-    return get_gpu_info, gpu_info, device
+    return get_gpu_info, gpu_info, device, num_gpus
 
 
 @app.cell
@@ -571,12 +592,13 @@ def __(
                 _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
                 _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
                 
-                # Initialize GPU monitoring
+                # Initialize GPU monitoring (for all GPUs)
                 _gpu_metrics = {
                     'peak_utilization': 0,
                     'peak_memory_mb': 0,
                     'avg_utilization': 0,
-                    'samples': []
+                    'samples': [],
+                    'per_gpu': {}  # Track each GPU separately
                 }
                 
                 # Try to import GPUtil for GPU monitoring
@@ -585,6 +607,10 @@ def __(
                     _gputil_available = True
                 except ImportError:
                     _gputil_available = False
+                
+                # Set which GPUs to use - all available GPUs
+                _gpu_ids = list(range(num_gpus)) if num_gpus > 0 else [0]
+                print(f"💻 Using {len(_gpu_ids)} GPU(s): {_gpu_ids}")
                 
                 # Convert pandas DataFrame to cuDF once if needed
                 _cudf_df = None
@@ -625,35 +651,65 @@ def __(
                     # cuDF benchmark (run if mode includes GPU AND cuDF available)
                     if _run_gpu and _cudf_df is not None:
                         try:
-                            # Capture GPU metrics before operation
+                            # Capture GPU metrics before operation (all GPUs)
                             if _gputil_available:
                                 try:
                                     gpus = GPUtil.getGPUs()
-                                    if gpus:
-                                        gpu = gpus[0]
-                                        _gpu_metrics['samples'].append({
-                                            'util': gpu.load * 100,
-                                            'mem': gpu.memoryUsed
-                                        })
-                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
-                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                    for gpu in gpus:
+                                        if gpu.id in _gpu_ids:
+                                            # Track per-GPU metrics
+                                            if gpu.id not in _gpu_metrics['per_gpu']:
+                                                _gpu_metrics['per_gpu'][gpu.id] = {'peak_util': 0, 'peak_mem': 0}
+                                            
+                                            _gpu_metrics['per_gpu'][gpu.id]['peak_util'] = max(
+                                                _gpu_metrics['per_gpu'][gpu.id]['peak_util'], 
+                                                gpu.load * 100
+                                            )
+                                            _gpu_metrics['per_gpu'][gpu.id]['peak_mem'] = max(
+                                                _gpu_metrics['per_gpu'][gpu.id]['peak_mem'], 
+                                                gpu.memoryUsed
+                                            )
+                                            
+                                            # Track overall metrics
+                                            _gpu_metrics['samples'].append({
+                                                'util': gpu.load * 100,
+                                                'mem': gpu.memoryUsed,
+                                                'gpu_id': gpu.id
+                                            })
+                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
+                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
                                 except:
                                     pass
                             
                             cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
                             
-                            # Capture GPU metrics after operation
+                            # Capture GPU metrics after operation (all GPUs)
                             if _gputil_available:
                                 try:
                                     gpus = GPUtil.getGPUs()
-                                    if gpus:
-                                        gpu = gpus[0]
-                                        _gpu_metrics['samples'].append({
-                                            'util': gpu.load * 100,
-                                            'mem': gpu.memoryUsed
-                                        })
-                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
-                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                    for gpu in gpus:
+                                        if gpu.id in _gpu_ids:
+                                            # Track per-GPU metrics
+                                            if gpu.id not in _gpu_metrics['per_gpu']:
+                                                _gpu_metrics['per_gpu'][gpu.id] = {'peak_util': 0, 'peak_mem': 0}
+                                            
+                                            _gpu_metrics['per_gpu'][gpu.id]['peak_util'] = max(
+                                                _gpu_metrics['per_gpu'][gpu.id]['peak_util'], 
+                                                gpu.load * 100
+                                            )
+                                            _gpu_metrics['per_gpu'][gpu.id]['peak_mem'] = max(
+                                                _gpu_metrics['per_gpu'][gpu.id]['peak_mem'], 
+                                                gpu.memoryUsed
+                                            )
+                                            
+                                            # Track overall metrics
+                                            _gpu_metrics['samples'].append({
+                                                'util': gpu.load * 100,
+                                                'mem': gpu.memoryUsed,
+                                                'gpu_id': gpu.id
+                                            })
+                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
+                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
                                 except:
                                     pass
                             
@@ -890,10 +946,17 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 _gpu_metrics_str = f"""
                     
                     **GPU Utilization During Benchmark**:
-                    - Peak GPU Utilization: **{_gm['peak_utilization']:.1f}%**
+                    - Peak GPU Utilization: **{_gm['peak_utilization']:.1f}%** (across all GPUs)
                     - Average GPU Utilization: **{_gm['avg_utilization']:.1f}%**
                     - Peak GPU Memory: **{_gm['peak_memory_mb']:.0f} MB**
                 """
+                
+                # Add per-GPU breakdown if multiple GPUs
+                if len(_gm.get('per_gpu', {})) > 1:
+                    _gpu_metrics_str += "\n                    \n                    **Per-GPU Breakdown**:\n"
+                    for gpu_id in sorted(_gm['per_gpu'].keys()):
+                        gpu_data = _gm['per_gpu'][gpu_id]
+                        _gpu_metrics_str += f"                    - GPU {gpu_id}: Peak {gpu_data['peak_util']:.1f}% util, {gpu_data['peak_mem']:.0f} MB\n"
             
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
