@@ -351,9 +351,10 @@ def __(
         with mo.status.spinner(
             title="🔄 Training LLM with LoRA...",
             subtitle=f"Epochs: {num_epochs.value}, Batch: {batch_size.value}, Rank: {lora_rank.value}"
-        ):
+        ) as _spinner:
             try:
                 # Initialize model and tokenizer (using small GPT-2 for demo)
+                mo.output.append(mo.md("**Step 1/6:** Loading GPT-2 model..."))
                 model_name = "gpt2"
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 tokenizer.pad_token = tokenizer.eos_token
@@ -364,11 +365,15 @@ def __(
                 ).to(device)
                 
                 # Inject LoRA
+                mo.output.append(mo.md("**Step 2/6:** Injecting LoRA layers..."))
                 model, lora_params = inject_lora(model, rank=lora_rank.value)
                 total_params = sum(p.numel() for p in model.parameters())
                 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
                 
+                mo.output.append(mo.md(f"✅ LoRA injected: Training only {trainable_params:,} / {total_params:,} parameters ({100*trainable_params/total_params:.2f}%)"))
+                
                 # Prepare dataset
+                mo.output.append(mo.md("**Step 3/6:** Preparing dataset..."))
                 dataset = FineTuningDataset(tokenizer, num_samples=200)
                 dataloader = DataLoader(
                     dataset,
@@ -383,13 +388,17 @@ def __(
                 )
                 
                 # Training loop
+                mo.output.append(mo.md("**Step 4/6:** Training model..."))
                 model.train()
                 losses = []
                 times = []
+                epoch_stats = []
+                gpu_memory_samples = []
                 start_time = time.time()
                 
                 for epoch in range(num_epochs.value):
                     epoch_losses = []
+                    epoch_start = time.time()
                     
                     for batch_idx, batch in enumerate(dataloader):
                         input_ids = batch['input_ids'].to(device)
@@ -423,24 +432,48 @@ def __(
                         losses.append(loss.item())
                         times.append(time.time() - start_time)
                         
-                        if batch_idx % 10 == 0:
-                            print(f"Epoch {epoch+1}/{num_epochs.value}, Batch {batch_idx}, Loss: {loss.item():.4f}")
+                        # Sample GPU memory periodically
+                        if batch_idx % 5 == 0 and device.type == "cuda":
+                            gpu_memory_samples.append({
+                                'time': time.time() - start_time,
+                                'memory_gb': torch.cuda.memory_allocated(0) / 1024**3
+                            })
+                    
+                    # Epoch summary
+                    epoch_time = time.time() - epoch_start
+                    epoch_stats.append({
+                        'epoch': epoch + 1,
+                        'avg_loss': np.mean(epoch_losses),
+                        'time': epoch_time
+                    })
+                    mo.output.append(mo.md(f"  Epoch {epoch+1}/{num_epochs.value}: Loss = {np.mean(epoch_losses):.4f}, Time = {epoch_time:.1f}s"))
                 
                 total_time = time.time() - start_time
                 
-                # Generate sample output
+                # Generate multiple sample outputs
+                mo.output.append(mo.md("**Step 5/6:** Generating sample outputs..."))
                 model.eval()
+                sample_prompts = [
+                    "Translate English to French: Hello",
+                    "Summarize this text: Machine learning is transforming",
+                    "Answer the question: What is AI?",
+                ]
+                generated_samples = []
+                
                 with torch.no_grad():
-                    prompt = "Translate English to French: Hello"
-                    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-                    outputs = model.generate(
-                        **inputs,
-                        max_length=50,
-                        num_return_sequences=1,
-                        temperature=0.7
-                    )
-                    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                    for prompt in sample_prompts:
+                        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+                        outputs = model.generate(
+                            **inputs,
+                            max_length=50,
+                            num_return_sequences=1,
+                            temperature=0.7,
+                            do_sample=True
+                        )
+                        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                        generated_samples.append({'prompt': prompt, 'output': generated_text})
             
+                mo.output.append(mo.md("**Step 6/6:** Finalizing results..."))
                 training_results = {
                     'losses': losses,
                     'times': times,
@@ -450,7 +483,11 @@ def __(
                     'lora_params': lora_params,
                     'final_loss': losses[-1],
                     'avg_loss': np.mean(losses[-10:]),
-                    'generated_sample': generated_text
+                    'generated_samples': generated_samples,
+                    'epoch_stats': epoch_stats,
+                    'gpu_memory_samples': gpu_memory_samples,
+                    'num_batches': len(losses),
+                    'samples_per_sec': len(losses) * batch_size.value / total_time
                 }
                 
                 # Cleanup GPU memory
@@ -485,16 +522,16 @@ def __(
                     'error_type': type(e).__name__
                 }
     
-    return training_results, train_button
+    training_results
 
 
 @app.cell
-def __(training_results, mo, go, pd):
+def __(training_results, mo, go, pd, np):
     """Visualize training results"""
     
     if training_results is None:
         mo.callout(
-            mo.md("**Click 'Start Fine-Tuning' to begin training**"),
+            mo.md("👈 **Click 'Start Fine-Tuning' to begin training**\n\nThis will train a GPT-2 model using LoRA and show real-time metrics."),
             kind="info"
         )
     elif 'error' in training_results:
@@ -509,46 +546,227 @@ def __(training_results, mo, go, pd):
             kind="danger"
         )
     else:
-        # Training metrics table
-        metrics_data = {
-            'Metric': ['Total Parameters', 'Trainable Parameters', 'LoRA Parameters', 'Reduction Factor', 'Training Time', 'Final Loss', 'Avg Last 10 Loss'],
-            'Value': [
-                f"{training_results['total_params']:,}",
-                f"{training_results['trainable_params']:,}",
-                f"{training_results['lora_params']:,}",
-                f"{training_results['total_params'] / max(training_results['trainable_params'], 1):.1f}x",
-                f"{training_results['total_time']:.2f}s",
-                f"{training_results['final_loss']:.4f}",
-                f"{training_results['avg_loss']:.4f}"
-            ]
-        }
+        # Create comprehensive visualizations
         
-        # Loss curve
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=training_results['times'],
-            y=training_results['losses'],
+        # 1. Key Metrics Cards
+        param_reduction = training_results['total_params'] / max(training_results['trainable_params'], 1)
+        
+        def metric_card(title, value, subtitle):
+            return mo.callout(
+                mo.vstack([
+                    mo.md(f"**{title}**"),
+                    mo.md(f"# {value}"),
+                    mo.md(f"*{subtitle}*")
+                ], align="center"),
+                kind="neutral"
+            )
+        
+        metrics_row = mo.hstack([
+            metric_card(
+                "Parameter Efficiency",
+                f"{param_reduction:.1f}x",
+                f"Training {training_results['trainable_params']:,} of {training_results['total_params']:,} params"
+            ),
+            metric_card(
+                "Training Time",
+                f"{training_results['total_time']:.1f}s",
+                f"{training_results['samples_per_sec']:.1f} samples/sec"
+            ),
+            metric_card(
+                "Final Loss",
+                f"{training_results['final_loss']:.4f}",
+                f"Avg: {training_results['avg_loss']:.4f}"
+            ),
+            metric_card(
+                "Total Batches",
+                str(training_results['num_batches']),
+                f"Across {len(training_results['epoch_stats'])} epochs"
+            )
+        ], justify="space-around")
+        
+        # 2. Loss curve with smoothing
+        losses = training_results['losses']
+        times = training_results['times']
+        
+        # Calculate smoothed loss (moving average)
+        window = min(10, len(losses) // 5)
+        if window > 1:
+            smoothed = np.convolve(losses, np.ones(window)/window, mode='valid')
+            smooth_times = times[window-1:]
+        else:
+            smoothed = losses
+            smooth_times = times
+        
+        fig_loss = go.Figure()
+        
+        # Raw loss
+        fig_loss.add_trace(go.Scatter(
+            x=times,
+            y=losses,
             mode='lines',
-            name='Training Loss',
-            line=dict(color='#ff6b6b', width=2)
+            name='Raw Loss',
+            line=dict(color='rgba(150, 150, 150, 0.3)', width=1),
+            hovertemplate='Time: %{x:.1f}s<br>Loss: %{y:.4f}<extra></extra>'
         ))
-        fig.update_layout(
+        
+        # Smoothed loss
+        fig_loss.add_trace(go.Scatter(
+            x=smooth_times,
+            y=smoothed,
+            mode='lines',
+            name='Smoothed Loss',
+            line=dict(color='#ff6b6b', width=3),
+            hovertemplate='Time: %{x:.1f}s<br>Loss: %{y:.4f}<extra></extra>'
+        ))
+        
+        fig_loss.update_layout(
             title="Training Loss Over Time",
             xaxis_title="Time (seconds)",
             yaxis_title="Loss",
             height=400,
-            hovermode='x unified'
+            hovermode='x unified',
+            template='plotly_white',
+            showlegend=True
         )
         
+        # 3. Per-epoch statistics
+        if training_results['epoch_stats']:
+            epoch_df = pd.DataFrame(training_results['epoch_stats'])
+            
+            fig_epochs = go.Figure()
+            
+            # Bar chart for epoch loss
+            fig_epochs.add_trace(go.Bar(
+                x=epoch_df['epoch'],
+                y=epoch_df['avg_loss'],
+                name='Avg Loss',
+                marker=dict(color='#4ecdc4'),
+                text=[f"{val:.4f}" for val in epoch_df['avg_loss']],
+                textposition='auto',
+                hovertemplate='Epoch %{x}<br>Avg Loss: %{y:.4f}<extra></extra>'
+            ))
+            
+            fig_epochs.update_layout(
+                title="Average Loss per Epoch",
+                xaxis_title="Epoch",
+                yaxis_title="Average Loss",
+                height=350,
+                template='plotly_white'
+            )
+        else:
+            fig_epochs = None
+        
+        # 4. GPU Memory usage during training
+        if training_results['gpu_memory_samples']:
+            mem_times = [s['time'] for s in training_results['gpu_memory_samples']]
+            mem_values = [s['memory_gb'] for s in training_results['gpu_memory_samples']]
+            
+            fig_memory = go.Figure()
+            fig_memory.add_trace(go.Scatter(
+                x=mem_times,
+                y=mem_values,
+                mode='lines',
+                fill='tozeroy',
+                name='GPU Memory',
+                line=dict(color='#95e1d3', width=2),
+                fillcolor='rgba(149, 225, 211, 0.3)',
+                hovertemplate='Time: %{x:.1f}s<br>Memory: %{y:.2f} GB<extra></extra>'
+            ))
+            
+            fig_memory.update_layout(
+                title="GPU Memory Usage During Training",
+                xaxis_title="Time (seconds)",
+                yaxis_title="Memory (GB)",
+                height=350,
+                template='plotly_white'
+            )
+        else:
+            fig_memory = None
+        
+        # 5. Generated samples display
+        samples_display = []
+        for i, sample in enumerate(training_results['generated_samples'], 1):
+            samples_display.append(
+                mo.callout(
+                    mo.vstack([
+                        mo.md(f"**Prompt:** {sample['prompt']}"),
+                        mo.md(f"**Output:** {sample['output']}")
+                    ]),
+                    kind="success" if i == 1 else "neutral"
+                )
+            )
+        
+        # 6. Parameter breakdown
+        param_data = pd.DataFrame({
+            'Type': ['Total Parameters', 'Trainable (LoRA)', 'Frozen'],
+            'Count': [
+                training_results['total_params'],
+                training_results['trainable_params'],
+                training_results['total_params'] - training_results['trainable_params']
+            ],
+            'Percentage': [
+                100.0,
+                100 * training_results['trainable_params'] / training_results['total_params'],
+                100 * (training_results['total_params'] - training_results['trainable_params']) / training_results['total_params']
+            ]
+        })
+        
+        fig_params = go.Figure(data=[go.Pie(
+            labels=param_data['Type'],
+            values=param_data['Count'],
+            hole=0.4,
+            marker=dict(colors=['#a8dadc', '#457b9d', '#1d3557']),
+            textinfo='label+percent',
+            hovertemplate='%{label}<br>%{value:,} params<br>%{percent}<extra></extra>'
+        )])
+        
+        fig_params.update_layout(
+            title="Parameter Distribution",
+            height=350,
+            template='plotly_white'
+        )
+        
+        # Assemble the dashboard
         mo.vstack([
-            mo.md("### ✅ Training Complete!"),
-            mo.ui.table(metrics_data, label="Training Metrics"),
-            mo.md("### 📈 Loss Curve"),
-            mo.ui.plotly(fig),
-            mo.md("### 💬 Sample Generation"),
+            mo.md("# ✅ Training Complete!"),
+            mo.md("---"),
+            
+            mo.md("## 📊 Key Metrics"),
+            metrics_row,
+            mo.md("---"),
+            
+            mo.md("## 📈 Training Progress"),
+            mo.hstack([
+                mo.vstack([
+                    mo.ui.plotly(fig_loss),
+                ], align="start"),
+                mo.vstack([
+                    mo.ui.plotly(fig_params),
+                ], align="start") if fig_params else mo.md("")
+            ], justify="space-around"),
+            
+            mo.hstack([
+                mo.ui.plotly(fig_epochs) if fig_epochs else mo.md(""),
+                mo.ui.plotly(fig_memory) if fig_memory else mo.md("")
+            ], justify="space-around"),
+            
+            mo.md("---"),
+            mo.md("## 💬 Sample Text Generation"),
+            mo.md("See how the fine-tuned model responds to different prompts:"),
+            mo.vstack(samples_display),
+            
+            mo.md("---"),
+            mo.md("### 🎯 Next Steps"),
             mo.callout(
-                mo.md(f"**Model Output**: {training_results['generated_sample']}"),
-                kind="success"
+                mo.md("""
+**Production Recommendations:**
+- Replace `FineTuningDataset` with your actual training data
+- Use larger models (LLaMA 2, Mistral, etc.) for better results
+- Increase training epochs for improved convergence
+- Implement validation set monitoring
+- Save checkpoints periodically using `model.save_pretrained()`
+                """),
+                kind="info"
             )
         ])
     return
