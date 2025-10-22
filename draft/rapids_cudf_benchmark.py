@@ -328,31 +328,31 @@ def __(
                     if estimated_gb > gpu_mem_gb * 0.7:  # Don't use more than 70% of GPU memory
                         # Scale down to safe size
                         safe_rows = int((gpu_mem_gb * 0.7 * 1024**3) / 50)
-                        n_rows = min(requested_rows, safe_rows)
-                        if n_rows < requested_rows:
+                        _n_rows = min(requested_rows, safe_rows)
+                        if _n_rows < requested_rows:
                             mo.callout(
                                 mo.md(f"""
                                 ⚠️ **Memory Scaling Applied**
                                 
                                 Requested: {requested_rows:,} rows ({estimated_gb:.1f} GB est.)
-                                Adjusted to: {n_rows:,} rows (safe for {gpu_mem_gb:.1f} GB GPU)
+                                Adjusted to: {_n_rows:,} rows (safe for {gpu_mem_gb:.1f} GB GPU)
                                 """),
                                 kind="warn"
                             )
                     else:
-                        n_rows = requested_rows
+                        _n_rows = requested_rows
                 else:
-                    n_rows = 10 ** dataset_size.value
+                    _n_rows = 10 ** dataset_size.value
                 
                 # Generate data
                 mo.status.progress_bar(
                     title="Generating dataset...",
-                    subtitle=f"{n_rows:,} rows"
+                    subtitle=f"{_n_rows:,} rows"
                 )
                 
-                pandas_df = generate_data(n_rows)
+                pandas_df = generate_data(_n_rows)
                 
-                results = {
+                _results = {
                     'operation': [],
                     'pandas_time': [],
                     'cudf_time': [],
@@ -379,15 +379,15 @@ def __(
                         cudf_time = None
                         speedup = None
                     
-                    results['operation'].append(op.capitalize())
-                    results['pandas_time'].append(pandas_time)
-                    results['cudf_time'].append(cudf_time)
-                    results['speedup'].append(speedup)
-                    results['result_size'].append(result_size)
+                    _results['operation'].append(op.capitalize())
+                    _results['pandas_time'].append(pandas_time)
+                    _results['cudf_time'].append(cudf_time)
+                    _results['speedup'].append(speedup)
+                    _results['result_size'].append(result_size)
                 
                 benchmark_results = {
-                    'results': results,
-                    'n_rows': n_rows,
+                    'results': _results,
+                    'n_rows': _n_rows,
                     'success': True
                 }
                 
@@ -448,18 +448,18 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             kind="danger"
         )
     else:
-        results = benchmark_results['results']
-        n_rows = benchmark_results['n_rows']
+        _results = benchmark_results['results']
+        _n_rows = benchmark_results['n_rows']
         
         # Create results table
         table_data = {
-            'Operation': results['operation'],
-            'Pandas Time (s)': [f"{t:.4f}" for t in results['pandas_time']],
+            'Operation': _results['operation'],
+            'Pandas Time (s)': [f"{t:.4f}" for t in _results['pandas_time']],
         }
         
         if CUDF_AVAILABLE:
-            table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in results['cudf_time']]
-            table_data['Speedup'] = [f"{s:.2f}x" if s else "N/A" for s in results['speedup']]
+            table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['cudf_time']]
+            table_data['Speedup'] = [f"{s:.2f}x" if s else "N/A" for s in _results['speedup']]
         
         # Create speedup bar chart
         if CUDF_AVAILABLE:
@@ -467,20 +467,20 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             
             fig.add_trace(go.Bar(
                 name='Pandas (CPU)',
-                x=results['operation'],
-                y=results['pandas_time'],
+                x=_results['operation'],
+                y=_results['pandas_time'],
                 marker_color='#ff6b6b'
             ))
             
             fig.add_trace(go.Bar(
                 name='cuDF (GPU)',
-                x=results['operation'],
-                y=results['cudf_time'],
+                x=_results['operation'],
+                y=_results['cudf_time'],
                 marker_color='#51cf66'
             ))
             
             fig.update_layout(
-                title=f"Performance Comparison ({n_rows:,} rows)",
+                title=f"Performance Comparison ({_n_rows:,} rows)",
                 xaxis_title="Operation",
                 yaxis_title="Time (seconds)",
                 barmode='group',
@@ -492,10 +492,10 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             fig_speedup = go.Figure()
             
             fig_speedup.add_trace(go.Bar(
-                x=results['operation'],
-                y=results['speedup'],
+                x=_results['operation'],
+                y=_results['speedup'],
                 marker_color='#4c6ef5',
-                text=[f"{s:.1f}x" for s in results['speedup']],
+                text=[f"{s:.1f}x" for s in _results['speedup']],
                 textposition='outside'
             ))
             
@@ -507,9 +507,9 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             )
             
             # Calculate overall statistics
-            avg_speedup = sum(results['speedup']) / len(results['speedup'])
-            max_speedup = max(results['speedup'])
-            min_speedup = min(results['speedup'])
+            avg_speedup = sum(_results['speedup']) / len(_results['speedup'])
+            max_speedup = max(_results['speedup'])
+            min_speedup = min(_results['speedup'])
             
             mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
@@ -522,9 +522,9 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
                     mo.md(f"""
                     **Performance Summary**:
                     - Average Speedup: **{avg_speedup:.1f}x**
-                    - Best Speedup: **{max_speedup:.1f}x** ({results['operation'][results['speedup'].index(max_speedup)]})
+                    - Best Speedup: **{max_speedup:.1f}x** ({_results['operation'][_results['speedup'].index(max_speedup)]})
                     - Minimum Speedup: **{min_speedup:.1f}x**
-                    - Dataset Size: **{n_rows:,}** rows
+                    - Dataset Size: **{_n_rows:,}** rows
                     """),
                     kind="success"
                 )
