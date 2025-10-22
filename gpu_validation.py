@@ -377,17 +377,18 @@ def __(mo, psutil, stress_test_running, subprocess):
                         break
             
             if not _nvcc_path:
-                _install_msg.append("ℹ️ CUDA development toolkit not found in:")
+                _install_msg.append("⚠️ **CUDA development toolkit (nvcc) not found in:**")
                 for p in _cuda_paths[:3]:  # Show first 3 paths
                     _install_msg.append(f"   - {p}")
-                
-                # Try to install CUDA toolkit via apt (for Ubuntu/Debian)
-                _install_msg.append("🔧 Attempting to install CUDA toolkit via apt...")
+                _install_msg.append("")
+                _install_msg.append("🔧 **Attempting to install CUDA toolkit via apt-get...**")
+                _install_msg.append("   ⏳ This may take 2-3 minutes (~2GB download)")
+                _install_msg.append("")
                 try:
                     # Check if apt is available (Debian/Ubuntu systems)
                     _apt_check = subprocess.run(["which", "apt-get"], capture_output=True, text=True)
                     if _apt_check.returncode == 0:
-                        _install_msg.append("   Updating package lists...")
+                        _install_msg.append("   📋 Step 1/3: Updating package lists...")
                         
                         # Update apt cache first
                         _apt_update = subprocess.run(
@@ -398,9 +399,13 @@ def __(mo, psutil, stress_test_running, subprocess):
                         )
                         
                         if _apt_update.returncode != 0:
-                            _install_msg.append("⚠️ apt-get update had warnings (continuing anyway)")
+                            _install_msg.append("   ⚠️ apt-get update had warnings (continuing anyway)")
+                        else:
+                            _install_msg.append("   ✅ Package lists updated")
                         
-                        _install_msg.append("   Installing nvidia-cuda-toolkit (this may take 2-3 minutes)...")
+                        _install_msg.append("")
+                        _install_msg.append("   📦 Step 2/3: Installing nvidia-cuda-toolkit...")
+                        _install_msg.append("   (Downloading ~2GB of packages, please wait...)")
                         
                         # Install cuda toolkit
                         _cuda_install = subprocess.run(
@@ -411,14 +416,18 @@ def __(mo, psutil, stress_test_running, subprocess):
                         )
                         
                         if _cuda_install.returncode == 0:
-                            _install_msg.append("✅ CUDA toolkit installed successfully")
+                            _install_msg.append("   ✅ CUDA toolkit installed successfully (~5.4GB)")
+                            _install_msg.append("")
+                            _install_msg.append("   🔍 Step 3/3: Verifying nvcc compiler...")
                             
                             # Check if nvcc is now available
                             _nvcc_result = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
                             if _nvcc_result.returncode == 0:
                                 _nvcc_path = _nvcc_result.stdout.strip()
                                 _cuda_bin_dir = os.path.dirname(_nvcc_path)
-                                _install_msg.append(f"✅ nvcc found at: {_nvcc_path}")
+                                _install_msg.append(f"   ✅ nvcc compiler found at: `{_nvcc_path}`")
+                                _install_msg.append("")
+                                _install_msg.append("**✨ CUDA toolkit installation complete! Proceeding with gpu-burn compilation...**")
                             else:
                                 _install_msg.append("⚠️ CUDA toolkit installed but nvcc not in PATH")
                                 _install_msg.append("   Using continuous PyTorch stress test instead")
@@ -447,7 +456,8 @@ def __(mo, psutil, stress_test_running, subprocess):
                     _gpu_burn_path = None
                     raise Exception(f"CUDA toolkit installation error: {install_error}")
             
-            _install_msg.append("📦 Compiling gpu-burn from source...")
+            _install_msg.append("")
+            _install_msg.append("🔨 **Step 4: Compiling gpu-burn from source...**")
             
             # Compile from source
             _home_dir = os.path.expanduser("~")
@@ -484,10 +494,12 @@ def __(mo, psutil, stress_test_running, subprocess):
                 _gpu_burn_path = os.path.join(_gpu_burn_dir, "gpu_burn")
                 
                 if os.path.exists(_gpu_burn_path):
-                    _install_msg.append(f"✅ Successfully compiled gpu-burn from source!")
-                    _install_msg.append(f"📍 Binary location: {_gpu_burn_path}")
+                    _install_msg.append(f"   ✅ Successfully compiled gpu-burn!")
+                    _install_msg.append(f"   📍 Binary location: `{_gpu_burn_path}`")
+                    _install_msg.append("")
+                    _install_msg.append("**🎉 All steps complete! gpu-burn is ready for stress testing.**")
                 else:
-                    _install_msg.append(f"❌ Compilation succeeded but binary not found at {_gpu_burn_path}")
+                    _install_msg.append(f"   ❌ Compilation succeeded but binary not found at {_gpu_burn_path}")
                     _gpu_burn_path = None
                 
         except subprocess.TimeoutExpired:
