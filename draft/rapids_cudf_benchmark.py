@@ -755,13 +755,13 @@ def __(
                     print("✅ Cleaned up GPU memory")
                 except Exception as e:
                     print(f"⚠️  GPU cleanup warning: {e}")
-            
-            except torch.cuda.OutOfMemoryError:
-                # Handle GPU OOM explicitly
-                torch.cuda.empty_cache()
-                benchmark_results = {
-                    'error': 'GPU Out of Memory',
-                    'suggestion': f"""
+        
+        except torch.cuda.OutOfMemoryError:
+            # Handle GPU OOM explicitly
+            torch.cuda.empty_cache()
+            benchmark_results = {
+                'error': 'GPU Out of Memory',
+                'suggestion': f"""
 **GPU ran out of memory!**
 
 **Current settings**:
@@ -774,15 +774,15 @@ def __(
 3. Close other GPU applications
 
 **GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
-                    """,
-                    'success': False
-                }
-            except Exception as e:
-                benchmark_results = {
-                    'error': str(e),
-                    'error_type': type(e).__name__,
-                    'success': False
-                }
+                """,
+                'success': False
+            }
+        except Exception as e:
+            benchmark_results = {
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'success': False
+            }
     
     return benchmark_results,
 
