@@ -195,7 +195,7 @@ def __(mo, device, torch):
         return None
     
     gpu_memory = mo.ui.refresh(
-        lambda: get_gpu_memory(),
+        component=lambda: get_gpu_memory(),
         options=[2, 5, 10],
         default_interval=2
     )

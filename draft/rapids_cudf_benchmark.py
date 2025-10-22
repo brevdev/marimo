@@ -132,21 +132,39 @@ def __(torch, mo, subprocess):
     
     gpu_info = get_gpu_info()
     
-    if gpu_info['available']:
-        mo.callout(
-            mo.vstack([
-                mo.md("**✅ GPU Detected for RAPIDS**"),
-                mo.ui.table(gpu_info['gpus'])
-            ]),
-            kind="success"
-        )
-    else:
-        mo.callout(
-            mo.md(f"⚠️ **No GPU detected**: {gpu_info.get('error', 'Unknown')}"),
-            kind="warn"
+    # Stop execution if no GPU available (RAPIDS requires GPU)
+    if not gpu_info['available']:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires an NVIDIA GPU for RAPIDS cuDF benchmarking.
+                
+                **Error**: {gpu_info.get('error', 'Unknown')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: cuDF requires GPU to demonstrate speedup vs Pandas.
+                """),
+                kind="danger"
+            )
         )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Display GPU info
+    mo.callout(
+        mo.vstack([
+            mo.md("**✅ GPU Detected for RAPIDS**"),
+            mo.ui.table(gpu_info['gpus'])
+        ]),
+        kind="success"
+    )
+    
+    device = torch.device("cuda")
     
     return get_gpu_info, gpu_info, device
 
@@ -283,70 +301,128 @@ def __(np, pd, cudf, time, CUDF_AVAILABLE):
 @app.cell
 def __(
     run_benchmark_btn, dataset_size, operations, generate_data,
-    benchmark_functions, cudf, CUDF_AVAILABLE, pd, mo
+    benchmark_functions, cudf, CUDF_AVAILABLE, pd, mo, np, torch, device
 ):
     """Run benchmarks"""
     
     benchmark_results = None
     
     if run_benchmark_btn.value:
-        mo.md("### 🔄 Running benchmarks...")
+        # Set random seeds for reproducibility
+        np.random.seed(42)
+        torch.manual_seed(42)
         
-        try:
-            n_rows = 10 ** dataset_size.value
-            
-            # Generate data
-            mo.status.progress_bar(
-                title="Generating dataset...",
-                subtitle=f"{n_rows:,} rows"
-            )
-            
-            pandas_df = generate_data(n_rows)
-            
-            results = {
-                'operation': [],
-                'pandas_time': [],
-                'cudf_time': [],
-                'speedup': [],
-                'result_size': []
-            }
-            
-            # Run benchmarks for each operation
-            for op in operations.value:
-                if op not in benchmark_functions:
-                    continue
-                
-                bench_func = benchmark_functions[op]
-                
-                # Pandas benchmark
-                pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
-                
-                # cuDF benchmark
-                if CUDF_AVAILABLE:
-                    cudf_df = cudf.from_pandas(pandas_df)
-                    cudf_time, _ = bench_func(cudf_df, is_gpu=True)
-                    speedup = pandas_time / cudf_time
+        with mo.status.spinner(
+            title="🔄 Running RAPIDS cuDF Benchmarks...",
+            subtitle=f"Operations: {', '.join(operations.value)}, Dataset: {10**dataset_size.value:,} rows"
+        ):
+            try:
+                # Check GPU memory and adjust dataset size if needed
+                if device.type == "cuda":
+                    gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    requested_rows = 10 ** dataset_size.value
+                    
+                    # Estimate memory: ~50 bytes per row (conservative)
+                    estimated_gb = (requested_rows * 50) / 1024**3
+                    
+                    if estimated_gb > gpu_mem_gb * 0.7:  # Don't use more than 70% of GPU memory
+                        # Scale down to safe size
+                        safe_rows = int((gpu_mem_gb * 0.7 * 1024**3) / 50)
+                        n_rows = min(requested_rows, safe_rows)
+                        if n_rows < requested_rows:
+                            mo.callout(
+                                mo.md(f"""
+                                ⚠️ **Memory Scaling Applied**
+                                
+                                Requested: {requested_rows:,} rows ({estimated_gb:.1f} GB est.)
+                                Adjusted to: {n_rows:,} rows (safe for {gpu_mem_gb:.1f} GB GPU)
+                                """),
+                                kind="warn"
+                            )
+                    else:
+                        n_rows = requested_rows
                 else:
-                    cudf_time = None
-                    speedup = None
+                    n_rows = 10 ** dataset_size.value
                 
-                results['operation'].append(op.capitalize())
-                results['pandas_time'].append(pandas_time)
-                results['cudf_time'].append(cudf_time)
-                results['speedup'].append(speedup)
-                results['result_size'].append(result_size)
-            
-            benchmark_results = {
-                'results': results,
-                'n_rows': n_rows,
-                'success': True
-            }
-            
-        except Exception as e:
-            benchmark_results = {
-                'error': str(e),
-                'success': False
-            }
+                # Generate data
+                mo.status.progress_bar(
+                    title="Generating dataset...",
+                    subtitle=f"{n_rows:,} rows"
+                )
+                
+                pandas_df = generate_data(n_rows)
+                
+                results = {
+                    'operation': [],
+                    'pandas_time': [],
+                    'cudf_time': [],
+                    'speedup': [],
+                    'result_size': []
+                }
+                
+                # Run benchmarks for each operation
+                for op in operations.value:
+                    if op not in benchmark_functions:
+                        continue
+                    
+                    bench_func = benchmark_functions[op]
+                    
+                    # Pandas benchmark
+                    pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                    
+                    # cuDF benchmark
+                    if CUDF_AVAILABLE:
+                        cudf_df = cudf.from_pandas(pandas_df)
+                        cudf_time, _ = bench_func(cudf_df, is_gpu=True)
+                        speedup = pandas_time / cudf_time
+                    else:
+                        cudf_time = None
+                        speedup = None
+                    
+                    results['operation'].append(op.capitalize())
+                    results['pandas_time'].append(pandas_time)
+                    results['cudf_time'].append(cudf_time)
+                    results['speedup'].append(speedup)
+                    results['result_size'].append(result_size)
+                
+                benchmark_results = {
+                    'results': results,
+                    'n_rows': n_rows,
+                    'success': True
+                }
+                
+                # Cleanup GPU memory
+                if CUDF_AVAILABLE and device.type == "cuda":
+                    del cudf_df
+                    torch.cuda.empty_cache()
+                
+            except torch.cuda.OutOfMemoryError:
+                # Handle GPU OOM explicitly
+                torch.cuda.empty_cache()
+                benchmark_results = {
+                    'error': 'GPU Out of Memory',
+                    'suggestion': f"""
+**GPU ran out of memory!**
+
+**Current settings**:
+- Dataset size: {10**dataset_size.value:,} rows
+- Operations: {', '.join(operations.value)}
+
+**Try these solutions**:
+1. Reduce dataset size (try {dataset_size.value - 1} or {dataset_size.value - 2})
+2. Run fewer operations at once
+3. Close other GPU applications
+
+**GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
+                    """,
+                    'success': False
+                }
+            except Exception as e:
+                benchmark_results = {
+                    'error': str(e),
+                    'error_type': type(e).__name__,
+                    'success': False
+                }
     
     return benchmark_results,
 
@@ -361,8 +437,14 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             kind="info"
         )
     elif not benchmark_results['success']:
+        error_msg = f"**Benchmark Error**: {benchmark_results['error']}"
+        if 'suggestion' in benchmark_results:
+            error_msg += f"\n\n{benchmark_results['suggestion']}"
+        if 'error_type' in benchmark_results:
+            error_msg += f"\n\n*Error type: {benchmark_results['error_type']}*"
+        
         mo.callout(
-            mo.md(f"**Benchmark Error**: {benchmark_results['error']}"),
+            mo.md(error_msg),
             kind="danger"
         )
     else:
