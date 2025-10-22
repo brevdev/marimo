@@ -95,12 +95,18 @@ def __(mo):
     
     run_benchmark_btn = mo.ui.run_button(label="🏃 Run Benchmark")
     
+    return dataset_size, operations, run_benchmark_btn
+
+
+@app.cell
+def __(mo, dataset_size, operations, run_benchmark_btn):
+    """Display benchmark controls"""
     mo.vstack([
         mo.hstack([dataset_size, operations], justify="start"),
         mo.md(f"**Dataset will have**: {10**dataset_size.value:,} rows"),
         run_benchmark_btn
     ])
-    return dataset_size, operations, run_benchmark_btn
+    return
 
 
 @app.cell
@@ -170,8 +176,17 @@ def __(torch, mo, subprocess):
 
 
 @app.cell
-def __(mo, device, torch):
-    """GPU Memory Monitor"""
+def __(mo):
+    """GPU Memory Monitor - Refresh trigger"""
+    gpu_memory_refresh = mo.ui.refresh(default_interval="5s")
+    return gpu_memory_refresh,
+
+
+@app.cell
+def __(mo, device, torch, gpu_memory_refresh, Optional, Dict):
+    """GPU Memory Display"""
+    # Trigger refresh
+    _ = gpu_memory_refresh.value
     
     def get_gpu_memory() -> Optional[Dict]:
         """Get current GPU memory usage"""
@@ -187,17 +202,14 @@ def __(mo, device, torch):
             }
         return None
     
-    gpu_memory = mo.ui.refresh(
-        lambda: get_gpu_memory(),
-        options=[2, 5, 10],
-        default_interval=5
-    )
+    gpu_memory_data = get_gpu_memory()
     
     mo.vstack([
         mo.md("### 📊 GPU Memory"),
-        gpu_memory if gpu_memory.value else mo.md("*CPU mode*")
+        mo.ui.table(gpu_memory_data) if gpu_memory_data else mo.md("*CPU mode*"),
+        gpu_memory_refresh
     ])
-    return get_gpu_memory, gpu_memory
+    return get_gpu_memory, gpu_memory_data
 
 
 @app.cell
