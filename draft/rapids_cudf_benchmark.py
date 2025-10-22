@@ -60,11 +60,12 @@ def __():
 
 
 @app.cell
-def __(mo, CUDF_AVAILABLE, subprocess):
+def __(mo, CUDF_AVAILABLE, subprocess, cudf):
     """Auto-install cuDF if not available"""
     
     # Initialize at cell level - keep same name for consistency
     cudf_available = CUDF_AVAILABLE
+    cudf_module = cudf  # Start with the imported module (might be None)
     install_result = mo.md("")
     
     if not CUDF_AVAILABLE:
@@ -78,16 +79,21 @@ def __(mo, CUDF_AVAILABLE, subprocess):
                 )
                 
                 if result.returncode == 0:
-                    install_result = mo.callout(
-                        mo.md("✅ **cuDF installed!** Restart the notebook to activate GPU acceleration."),
-                        kind="success"
-                    )
-                    # Try importing again (may need kernel restart)
+                    # Try importing the newly installed cuDF
                     try:
-                        import cudf as _cudf
+                        import cudf as cudf_module
                         cudf_available = True
+                        install_result = mo.callout(
+                            mo.md("✅ **cuDF installed and imported successfully!** GPU acceleration is now active."),
+                            kind="success"
+                        )
                     except ImportError:
                         cudf_available = False
+                        cudf_module = None
+                        install_result = mo.callout(
+                            mo.md("✅ **cuDF installed!** Please restart the notebook to activate GPU acceleration."),
+                            kind="success"
+                        )
                 else:
                     install_result = mo.callout(
                         mo.md(f"⚠️ **Could not auto-install cuDF**. Install manually:\n```bash\npip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com\n```"),
@@ -98,8 +104,11 @@ def __(mo, CUDF_AVAILABLE, subprocess):
                     mo.md(f"⚠️ **Install skipped**: {str(e)[:100]}. Running CPU-only mode."),
                     kind="warn"
                 )
+    else:
+        # cuDF was already available, keep the original module
+        cudf_module = cudf if CUDF_AVAILABLE else None
     
-    return cudf_available, install_result
+    return cudf_available, cudf_module, install_result
 
 
 @app.cell
@@ -389,7 +398,7 @@ def __(mo, device, torch, gpu_refresh, time):
 
 
 @app.cell
-def __(np, pd, cudf, time, cudf_available):
+def __(np, pd, cudf_module, time, cudf_available):
     """Benchmark functions"""
     
     def generate_data(n_rows: int) -> pd.DataFrame:
@@ -426,7 +435,7 @@ def __(np, pd, cudf, time, cudf_available):
         """Benchmark join operation"""
         # Create second dataframe
         if is_gpu:
-            df2 = cudf.DataFrame({
+            df2 = cudf_module.DataFrame({
                 'group': range(100),
                 'multiplier': np.random.randn(100)
             })
@@ -489,7 +498,7 @@ def __(np, pd, cudf, time, cudf_available):
 @app.cell
 def __(
     run_benchmark_btn, dataset_size, operations, mode_toggle, generate_data,
-    benchmark_functions, cudf, cudf_available, pd, mo, np, torch, device
+    benchmark_functions, cudf_module, cudf_available, pd, mo, np, torch, device
 ):
     """Run benchmarks"""
     
@@ -550,12 +559,14 @@ def __(
                 
                 # Convert pandas DataFrame to cuDF once if needed
                 _cudf_df = None
-                if _mode in ['gpu', 'both'] and cudf_available:
+                if _mode in ['gpu', 'both'] and cudf_available and cudf_module is not None:
                     try:
-                        _cudf_df = cudf.from_pandas(pandas_df)
+                        _cudf_df = cudf_module.from_pandas(pandas_df)
                         print(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
                     except Exception as e:
                         print(f"❌ Failed to create cuDF DataFrame: {e}")
+                        import traceback
+                        traceback.print_exc()
                         _cudf_df = None
                 
                 for op in operations.value:
