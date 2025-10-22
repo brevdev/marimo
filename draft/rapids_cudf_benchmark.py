@@ -473,34 +473,42 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
             table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['cudf_time']]
             table_data['Speedup'] = [f"{s:.2f}x" if s else "N/A" for s in _results['speedup']]
         
-        # Create speedup bar chart
+        # Create performance visualization
+        fig = go.Figure()
+        
+        # Always show Pandas performance
+        fig.add_trace(go.Bar(
+            name='Pandas (CPU)',
+            x=_results['operation'],
+            y=_results['pandas_time'],
+            marker_color='#ff6b6b',
+            text=[f"{t:.3f}s" for t in _results['pandas_time']],
+            textposition='outside'
+        ))
+        
+        # Add cuDF if available
         if CUDF_AVAILABLE:
-            fig = go.Figure()
-            
-            fig.add_trace(go.Bar(
-                name='Pandas (CPU)',
-                x=_results['operation'],
-                y=_results['pandas_time'],
-                marker_color='#ff6b6b'
-            ))
-            
             fig.add_trace(go.Bar(
                 name='cuDF (GPU)',
                 x=_results['operation'],
                 y=_results['cudf_time'],
-                marker_color='#51cf66'
+                marker_color='#51cf66',
+                text=[f"{t:.3f}s" for t in _results['cudf_time']],
+                textposition='outside'
             ))
-            
-            fig.update_layout(
-                title=f"Performance Comparison ({_n_rows:,} rows)",
-                xaxis_title="Operation",
-                yaxis_title="Time (seconds)",
-                barmode='group',
-                height=400,
-                hovermode='x unified'
-            )
-            
-            # Speedup chart
+        
+        fig.update_layout(
+            title=f"Performance Comparison ({_n_rows:,} rows)" + (" - CPU Only Mode" if not CUDF_AVAILABLE else ""),
+            xaxis_title="Operation",
+            yaxis_title="Time (seconds)",
+            barmode='group' if CUDF_AVAILABLE else 'relative',
+            height=400,
+            hovermode='x unified'
+        )
+        
+        # Show results
+        if CUDF_AVAILABLE:
+            # Speedup chart (only with cuDF)
             fig_speedup = go.Figure()
             
             fig_speedup.add_trace(go.Bar(
@@ -542,16 +550,32 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
                 )
             ])
         else:
+            # CPU-only mode
             mo.vstack([
-                mo.md("### ⚠️ cuDF Not Available"),
-                mo.ui.table(table_data, label="Pandas Results (CPU only)"),
+                mo.md("### ✅ Benchmark Complete (CPU-Only Mode)!"),
                 mo.callout(
-                    mo.md("""
-                    **Install RAPIDS cuDF** to see GPU performance:
+                    mo.md(f"""
+                    ⚠️ **Running in CPU-only mode** (cuDF not installed)
+                    
+                    Install cuDF to see GPU-accelerated performance:
                     ```bash
-                    conda install -c rapidsai -c conda-forge -c nvidia \
-                        cudf=24.04 python=3.10 cudatoolkit=11.8
+                    pip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com
                     ```
+                    """),
+                    kind="warn"
+                ),
+                mo.ui.table(table_data, label="Performance Results"),
+                mo.md("### 📊 Pandas Performance (CPU)"),
+                mo.ui.plotly(fig),
+                mo.callout(
+                    mo.md(f"""
+                    **Pandas Performance Summary**:
+                    - Dataset Size: **{_n_rows:,}** rows
+                    - Operations Tested: **{len(_results['operation'])}**
+                    - Total Time: **{sum(_results['pandas_time']):.2f}s**
+                    - Average Time per Operation: **{sum(_results['pandas_time'])/len(_results['pandas_time']):.3f}s**
+                    
+                    💡 With cuDF (GPU), these operations could be **10-100x faster**!
                     """),
                     kind="info"
                 )
