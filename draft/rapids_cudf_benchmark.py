@@ -754,11 +754,15 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 textposition='outside'
             ))
         
-        _title_suffix = {
-            'cpu': ' - CPU Only',
-            'gpu': ' - GPU Only',
-            'both': ' - CPU vs GPU'
-        }.get(_mode, '')
+        # Determine title suffix based on what actually ran
+        if _run_cpu and _run_gpu:
+            _title_suffix = ' - CPU vs GPU'
+        elif _run_gpu:
+            _title_suffix = ' - GPU Only'
+        elif _run_cpu:
+            _title_suffix = ' - CPU Only'
+        else:
+            _title_suffix = ''
         
         fig.update_layout(
             title=f"Performance Comparison ({_n_rows:,} rows){_title_suffix}",
@@ -769,8 +773,8 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             hovermode='x unified'
         )
         
-        # Show results
-        if cudf_available and _mode in ['both', 'gpu']:
+        # Show results - use normalized _run_gpu flag instead of checking mode strings
+        if cudf_available and _run_gpu and any(_results['cudf_time']):
             # Speedup chart (only with cuDF)
             fig_speedup = go.Figure()
             
@@ -800,6 +804,17 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 max_speedup = 0
                 min_speedup = 0
             
+            # Determine callout kind and message based on performance
+            if avg_speedup >= 2:
+                _perf_kind = "success"
+                _perf_note = "🚀 GPU is significantly faster on this dataset!"
+            elif avg_speedup >= 1:
+                _perf_kind = "info"
+                _perf_note = "💡 GPU shows modest gains. Try increasing dataset size for better speedup."
+            else:
+                _perf_kind = "warn"
+                _perf_note = "⚠️ CPU is faster on this dataset size. GPU excels with 5M+ rows due to parallelism overhead."
+            
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
                 mo.ui.table(table_data, label="Performance Results"),
@@ -814,8 +829,10 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                     - Best Speedup: **{max_speedup:.1f}x** ({_results['operation'][_results['speedup'].index(max_speedup)]})
                     - Minimum Speedup: **{min_speedup:.1f}x**
                     - Dataset Size: **{_n_rows:,}** rows
+                    
+                    {_perf_note}
                     """),
-                    kind="success"
+                    kind=_perf_kind
                 )
             ])
         else:
