@@ -548,23 +548,46 @@ def __(
                 # Run benchmarks for each operation based on mode
                 _mode = mode_toggle.value
                 
+                # Convert pandas DataFrame to cuDF once if needed
+                _cudf_df = None
+                if _mode in ['gpu', 'both'] and cudf_available:
+                    try:
+                        _cudf_df = cudf.from_pandas(pandas_df)
+                        print(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
+                    except Exception as e:
+                        print(f"❌ Failed to create cuDF DataFrame: {e}")
+                        _cudf_df = None
+                
                 for op in operations.value:
                     if op not in benchmark_functions:
                         continue
                     
                     bench_func = benchmark_functions[op]
+                    print(f"\n🔄 Running {op}...")
                     
                     # Pandas benchmark (run if mode is 'cpu' or 'both')
                     if _mode in ['cpu', 'both']:
-                        pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                        try:
+                            pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                            print(f"  ✅ Pandas: {pandas_time:.4f}s ({result_size:,} rows)")
+                        except Exception as e:
+                            print(f"  ❌ Pandas failed: {e}")
+                            pandas_time, result_size = None, 0
                     else:
                         pandas_time, result_size = None, 0
                     
                     # cuDF benchmark (run if mode is 'gpu' or 'both' AND cuDF available)
-                    if _mode in ['gpu', 'both'] and cudf_available:
-                        cudf_df = cudf.from_pandas(pandas_df)
-                        cudf_time, _ = bench_func(cudf_df, is_gpu=True)
-                        speedup = pandas_time / cudf_time if pandas_time else None
+                    if _mode in ['gpu', 'both'] and _cudf_df is not None:
+                        try:
+                            cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
+                            speedup = pandas_time / cudf_time if (pandas_time and cudf_time) else None
+                            print(f"  ✅ cuDF: {cudf_time:.4f}s (speedup: {speedup:.1f}x)" if speedup else f"  ✅ cuDF: {cudf_time:.4f}s")
+                        except Exception as e:
+                            print(f"  ❌ cuDF failed: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            cudf_time = None
+                            speedup = None
                     else:
                         cudf_time = None
                         speedup = None
@@ -583,12 +606,13 @@ def __(
                 }
                 
                 # Cleanup GPU memory
-                if cudf_available and device.type == "cuda":
+                if _cudf_df is not None:
                     try:
-                        del cudf_df
-                    except NameError:
-                        pass  # cudf_df might not have been created
-                    torch.cuda.empty_cache()
+                        del _cudf_df
+                        torch.cuda.empty_cache()
+                        print("✅ Cleaned up GPU memory")
+                    except Exception as e:
+                        print(f"⚠️  GPU cleanup warning: {e}")
                 
             except torch.cuda.OutOfMemoryError:
                 # Handle GPU OOM explicitly
