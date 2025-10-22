@@ -521,29 +521,12 @@ def __(
 def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
     """Visualize benchmark results"""
     
-    # Show status based on button clicks and results
-    if run_benchmark_btn.value > 0:
-        if benchmark_results and benchmark_results.get('success'):
-            status = mo.callout(
-                mo.md(f"✅ **Benchmark completed!** Mode: `{benchmark_results.get('mode', 'unknown')}`"),
-                kind="success"
-            )
-        elif benchmark_results and not benchmark_results.get('success'):
-            status = mo.callout(
-                mo.md(f"❌ **Benchmark failed:** {benchmark_results.get('error', 'unknown')}"),
-                kind="danger"
-            )
-        else:
-            status = mo.callout(
-                mo.md("⏳ **Running benchmark...** This may take a moment."),
-                kind="info"
-            )
-    else:
-        status = None
+    # Build output based on benchmark state
+    _output = None
     
     if benchmark_results is None:
         # Show initial message before any benchmark runs
-        return mo.callout(
+        _output = mo.callout(
             mo.md("**Click 'Run Benchmark' to start performance comparison**"),
             kind="info"
         )
@@ -555,7 +538,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
         if 'error_type' in benchmark_results:
             error_msg += f"\n\n*Error type: {benchmark_results['error_type']}*"
         
-        return mo.callout(
+        _output = mo.callout(
             mo.md(error_msg),
             kind="danger"
         )
@@ -647,8 +630,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             max_speedup = max(_results['speedup'])
             min_speedup = min(_results['speedup'])
             
-            return mo.vstack([
-                status if status else mo.md(""),
+            _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
                 mo.ui.table(table_data, label="Performance Results"),
                 mo.md("### 📊 Execution Time Comparison"),
@@ -668,8 +650,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             ])
         else:
             # CPU-only mode
-            return mo.vstack([
-                status if status else mo.md(""),
+            _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete (CPU-Only Mode)!"),
                 mo.callout(
                     mo.md(f"""
@@ -698,6 +679,9 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                     kind="info"
                 )
             ])
+    
+    # Return the output
+    _output
 
 
 @app.cell
