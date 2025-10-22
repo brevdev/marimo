@@ -148,7 +148,7 @@ def __(mo, cudf_available, install_result):
 def __(mo, cudf_available):
     """Interactive benchmark controls"""
     dataset_size = mo.ui.slider(
-        start=3, stop=7, step=1, value=5,
+        start=3, stop=7, step=1, value=6,  # Default to 1M rows for meaningful GPU speedup
         label="Dataset Size (10^x rows)", show_value=True
     )
     
@@ -573,30 +573,21 @@ def __(
                 
                 # Convert pandas DataFrame to cuDF once if needed
                 _cudf_df = None
-                _debug_msgs = []
-                _debug_msgs.append(f"Mode: {_mode}")
-                _debug_msgs.append(f"_run_cpu: {_run_cpu}, _run_gpu: {_run_gpu}")
-                _debug_msgs.append(f"cudf_available: {cudf_available}")
-                _debug_msgs.append(f"cudf_module: {cudf_module}")
-                _debug_msgs.append(f"cudf_module is not None: {cudf_module is not None}")
                 
                 if _run_gpu and cudf_available and cudf_module is not None:
                     try:
                         _cudf_df = cudf_module.from_pandas(pandas_df)
-                        _debug_msgs.append(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
                         print(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
+                        
+                        # GPU warmup - run a simple operation to initialize GPU
+                        # This eliminates first-run overhead from benchmarks
+                        _ = _cudf_df[_cudf_df['value'] > 0]
+                        print("✅ GPU initialized")
                     except Exception as e:
-                        _debug_msgs.append(f"❌ Failed to create cuDF DataFrame: {e}")
                         print(f"❌ Failed to create cuDF DataFrame: {e}")
                         import traceback
                         traceback.print_exc()
                         _cudf_df = None
-                else:
-                    _debug_msgs.append(f"⚠️  Skipping cuDF creation - conditions not met")
-                
-                # Show debug info to user
-                for msg in _debug_msgs:
-                    print(msg)
                 
                 for op in operations.value:
                     if op not in benchmark_functions:
@@ -642,8 +633,7 @@ def __(
                     'results': _results,
                     'n_rows': _n_rows,
                     'mode': _mode,
-                    'success': True,
-                    'debug_info': '\n'.join(_debug_msgs)  # Add debug info for display
+                    'success': True
                 }
                 
                 # Cleanup GPU memory
@@ -812,9 +802,6 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
-                mo.accordion({
-                    "🐛 Debug Info (click to expand)": mo.md(f"```\n{benchmark_results.get('debug_info', 'No debug info')}\n```")
-                }) if 'debug_info' in benchmark_results else mo.md(""),
                 mo.ui.table(table_data, label="Performance Results"),
                 mo.md("### 📊 Execution Time Comparison"),
                 mo.ui.plotly(fig),
@@ -835,19 +822,16 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
             # CPU-only mode
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete (CPU-Only Mode)!"),
-                mo.accordion({
-                    "🐛 Debug Info - Why CPU-only? (click to expand)": mo.md(f"```\n{benchmark_results.get('debug_info', 'No debug info')}\n```")
-                }) if 'debug_info' in benchmark_results else mo.md(""),
                 mo.callout(
                     mo.md(f"""
                     ⚠️ **Running in CPU-only mode** (cuDF not available or failed)
-                    
-                    Check the debug info above to see why cuDF isn't working.
                     
                     To install cuDF:
                     ```bash
                     pip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com
                     ```
+                    
+                    After installation, restart the notebook to enable GPU benchmarks.
                     """),
                     kind="warn"
                 ),
