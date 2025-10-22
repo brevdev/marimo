@@ -80,7 +80,7 @@ def __(mo, CUDF_AVAILABLE):
 
 
 @app.cell
-def __(mo):
+def __(mo, CUDF_AVAILABLE):
     """Interactive benchmark controls"""
     dataset_size = mo.ui.slider(
         start=3, stop=7, step=1, value=5,
@@ -93,18 +93,42 @@ def __(mo):
         label="Operations to Benchmark"
     )
     
+    # CPU/GPU mode toggle (only if cuDF available)
+    if CUDF_AVAILABLE:
+        mode_toggle = mo.ui.dropdown(
+            options={'both': 'CPU vs GPU', 'cpu': 'CPU Only', 'gpu': 'GPU Only'},
+            value='both',
+            label="Benchmark Mode"
+        )
+    else:
+        mode_toggle = mo.ui.dropdown(
+            options={'cpu': 'CPU Only (cuDF not installed)'},
+            value='cpu',
+            label="Benchmark Mode"
+        )
+    
     run_benchmark_btn = mo.ui.run_button(label="🏃 Run Benchmark")
     
-    return dataset_size, operations, run_benchmark_btn
+    return dataset_size, operations, mode_toggle, run_benchmark_btn
 
 
 @app.cell
-def __(mo, dataset_size, operations, run_benchmark_btn):
+def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, CUDF_AVAILABLE):
     """Display benchmark controls"""
     mo.vstack([
         mo.hstack([dataset_size, operations], justify="start"),
+        mo.hstack([mode_toggle, run_benchmark_btn], justify="start"),
         mo.md(f"**Dataset will have**: {10**dataset_size.value:,} rows"),
-        run_benchmark_btn
+        mo.callout(
+            mo.md(f"""
+            **Mode**: {mode_toggle.value}
+            
+            {'✅ cuDF available - you can compare CPU vs GPU!' if CUDF_AVAILABLE else '⚠️ cuDF not installed - running CPU-only benchmarks'}
+            
+            {'💡 Tip: Try "CPU vs GPU" mode to see the speedup!' if CUDF_AVAILABLE else '💡 Install cuDF: `pip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com`'}
+            """),
+            kind="info" if CUDF_AVAILABLE else "warn"
+        )
     ])
     return
 
@@ -312,14 +336,17 @@ def __(np, pd, cudf, time, CUDF_AVAILABLE):
 
 @app.cell
 def __(
-    run_benchmark_btn, dataset_size, operations, generate_data,
+    run_benchmark_btn, dataset_size, operations, mode_toggle, generate_data,
     benchmark_functions, cudf, CUDF_AVAILABLE, pd, mo, np, torch, device
 ):
     """Run benchmarks"""
     
     benchmark_results = None
     
-    if run_benchmark_btn.value:
+    # Debug output to show button state
+    _button_clicked = run_benchmark_btn.value
+    
+    if _button_clicked:
         # Set random seeds for reproducibility
         np.random.seed(42)
         torch.manual_seed(42)
@@ -372,21 +399,26 @@ def __(
                     'result_size': []
                 }
                 
-                # Run benchmarks for each operation
+                # Run benchmarks for each operation based on mode
+                _mode = mode_toggle.value
+                
                 for op in operations.value:
                     if op not in benchmark_functions:
                         continue
                     
                     bench_func = benchmark_functions[op]
                     
-                    # Pandas benchmark
-                    pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                    # Pandas benchmark (run if mode is 'cpu' or 'both')
+                    if _mode in ['cpu', 'both']:
+                        pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                    else:
+                        pandas_time, result_size = None, 0
                     
-                    # cuDF benchmark
-                    if CUDF_AVAILABLE:
+                    # cuDF benchmark (run if mode is 'gpu' or 'both' AND cuDF available)
+                    if _mode in ['gpu', 'both'] and CUDF_AVAILABLE:
                         cudf_df = cudf.from_pandas(pandas_df)
                         cudf_time, _ = bench_func(cudf_df, is_gpu=True)
-                        speedup = pandas_time / cudf_time
+                        speedup = pandas_time / cudf_time if pandas_time else None
                     else:
                         cudf_time = None
                         speedup = None
@@ -400,6 +432,7 @@ def __(
                 benchmark_results = {
                     'results': _results,
                     'n_rows': _n_rows,
+                    'mode': _mode,
                     'success': True
                 }
                 
@@ -440,6 +473,21 @@ def __(
 
 
 @app.cell
+def __(run_benchmark_btn, benchmark_results, mo):
+    """Debug: Show benchmark status"""
+    if run_benchmark_btn.value:
+        if benchmark_results and benchmark_results.get('success'):
+            mo.md(f"✅ Benchmark completed! Mode: {benchmark_results.get('mode', 'unknown')}")
+        elif benchmark_results and not benchmark_results.get('success'):
+            mo.md(f"❌ Benchmark failed: {benchmark_results.get('error', 'unknown')}")
+        else:
+            mo.md("⏳ Running benchmark...")
+    else:
+        mo.md("")
+    return
+
+
+@app.cell
 def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
     """Visualize benchmark results"""
     
@@ -464,44 +512,59 @@ def __(benchmark_results, mo, pd, go, CUDF_AVAILABLE):
         _n_rows = benchmark_results['n_rows']
         
         # Create results table
-        table_data = {
-            'Operation': _results['operation'],
-            'Pandas Time (s)': [f"{t:.4f}" for t in _results['pandas_time']],
-        }
+        _mode = benchmark_results.get('mode', 'cpu')
+        table_data = {'Operation': _results['operation']}
         
-        if CUDF_AVAILABLE:
+        # Add Pandas times if they were run
+        if _mode in ['cpu', 'both'] and any(_results['pandas_time']):
+            table_data['Pandas Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['pandas_time']]
+        
+        # Add cuDF times if they were run
+        if _mode in ['gpu', 'both'] and CUDF_AVAILABLE and any(_results['cudf_time']):
             table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['cudf_time']]
+        
+        # Add speedup if both were run
+        if _mode == 'both' and any(_results['speedup']):
             table_data['Speedup'] = [f"{s:.2f}x" if s else "N/A" for s in _results['speedup']]
         
         # Create performance visualization
         fig = go.Figure()
         
-        # Always show Pandas performance
-        fig.add_trace(go.Bar(
-            name='Pandas (CPU)',
-            x=_results['operation'],
-            y=_results['pandas_time'],
-            marker_color='#ff6b6b',
-            text=[f"{t:.3f}s" for t in _results['pandas_time']],
-            textposition='outside'
-        ))
-        
-        # Add cuDF if available
-        if CUDF_AVAILABLE:
+        # Add Pandas performance if run
+        if _mode in ['cpu', 'both'] and any(_results['pandas_time']):
+            pandas_times = [t if t else 0 for t in _results['pandas_time']]
             fig.add_trace(go.Bar(
-                name='cuDF (GPU)',
+                name='Pandas (CPU)',
                 x=_results['operation'],
-                y=_results['cudf_time'],
-                marker_color='#51cf66',
-                text=[f"{t:.3f}s" for t in _results['cudf_time']],
+                y=pandas_times,
+                marker_color='#ff6b6b',
+                text=[f"{t:.3f}s" if t else "N/A" for t in _results['pandas_time']],
                 textposition='outside'
             ))
         
+        # Add cuDF if run
+        if _mode in ['gpu', 'both'] and CUDF_AVAILABLE and any(_results['cudf_time']):
+            cudf_times = [t if t else 0 for t in _results['cudf_time']]
+            fig.add_trace(go.Bar(
+                name='cuDF (GPU)',
+                x=_results['operation'],
+                y=cudf_times,
+                marker_color='#51cf66',
+                text=[f"{t:.3f}s" if t else "N/A" for t in _results['cudf_time']],
+                textposition='outside'
+            ))
+        
+        _title_suffix = {
+            'cpu': ' - CPU Only',
+            'gpu': ' - GPU Only',
+            'both': ' - CPU vs GPU'
+        }.get(_mode, '')
+        
         fig.update_layout(
-            title=f"Performance Comparison ({_n_rows:,} rows)" + (" - CPU Only Mode" if not CUDF_AVAILABLE else ""),
+            title=f"Performance Comparison ({_n_rows:,} rows){_title_suffix}",
             xaxis_title="Operation",
             yaxis_title="Time (seconds)",
-            barmode='group' if CUDF_AVAILABLE else 'relative',
+            barmode='group',
             height=400,
             hovermode='x unified'
         )
