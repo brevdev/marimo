@@ -429,11 +429,6 @@ def __(
                     _n_rows = 10 ** dataset_size.value
                 
                 # Generate data
-                mo.status.progress_bar(
-                    title="Generating dataset...",
-                    subtitle=f"{_n_rows:,} rows"
-                )
-                
                 pandas_df = generate_data(_n_rows)
                 
                 _results = {
