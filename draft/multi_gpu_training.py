@@ -471,7 +471,7 @@ def __(
                 
                 data_single = create_synthetic_data(batch_size.value, num_batches, str(device))
                 
-                results = {
+                _results = {
                     'model_params': n_params,
                     'total_batch_size': batch_size.value,
                     'n_gpus': n_gpus
@@ -483,7 +483,7 @@ def __(
                     single_results = train_single_gpu(
                         model_single, data_single, num_epochs.value, str(device)
                     )
-                    results['single_gpu'] = single_results
+                    __results['single_gpu'] = single_results
                 
                 # Multi-GPU training
                 if n_gpus > 1:
@@ -491,17 +491,17 @@ def __(
                     multi_results = train_multi_gpu_simulated(
                         model_multi, data_single, num_epochs.value, n_gpus
                     )
-                    results['multi_gpu'] = multi_results
+                    __results['multi_gpu'] = multi_results
                     
                     # Calculate speedup
-                    if 'single_gpu' in results:
-                        speedup = single_results['total_time'] / multi_results['total_time']
+                    if 'single_gpu' in _results:
+                        speedup = single__results['total_time'] / multi__results['total_time']
                         efficiency = speedup / n_gpus * 100
-                        results['speedup'] = speedup
-                        results['efficiency'] = efficiency
+                        __results['speedup'] = speedup
+                        __results['efficiency'] = efficiency
                 
                 training_results = {
-                    'results': results,
+                    'results': _results,
                     'success': True
                 }
                 
@@ -559,16 +559,16 @@ def __(training_results, mo, go, n_gpus):
     elif not training_results.get('success', False):
         error_msg = f"**Training Error**: {training_results.get('error', 'Unknown')}"
         if 'suggestion' in training_results:
-            error_msg += f"\n\n{training_results['suggestion']}"
+            error_msg += f"\n\n{training__results['suggestion']}"
         if 'error_type' in training_results:
-            error_msg += f"\n\n*Error type: {training_results['error_type']}*"
+            error_msg += f"\n\n*Error type: {training__results['error_type']}*"
         
         mo.callout(
             mo.md(error_msg),
             kind="danger"
         )
     else:
-        results = training_results['results']
+        _results = training__results['results']
         
         # Training statistics
         stats_data = {
@@ -578,15 +578,15 @@ def __(training_results, mo, go, n_gpus):
                 'Number of GPUs',
             ],
             'Value': [
-                f"{results['model_params']:,}",
-                str(results['total_batch_size']),
-                str(results['n_gpus']),
+                f"{__results['model_params']:,}",
+                str(__results['total_batch_size']),
+                str(__results['n_gpus']),
             ]
         }
         
         # Add performance metrics
-        if 'single_gpu' in results:
-            single = results['single_gpu']
+        if 'single_gpu' in _results:
+            single = __results['single_gpu']
             stats_data['Metric'].extend([
                 'Single-GPU Time',
                 'Single-GPU Throughput',
@@ -597,7 +597,7 @@ def __(training_results, mo, go, n_gpus):
             ])
         
         if 'multi_gpu' in results:
-            multi = results['multi_gpu']
+            multi = _results['multi_gpu']
             stats_data['Metric'].extend([
                 f'{n_gpus}-GPU Time',
                 f'{n_gpus}-GPU Throughput',
@@ -613,8 +613,8 @@ def __(training_results, mo, go, n_gpus):
                     'Scaling Efficiency',
                 ])
                 stats_data['Value'].extend([
-                    f"{results['speedup']:.2f}x",
-                    f"{results['efficiency']:.1f}%",
+                    f"{_results['speedup']:.2f}x",
+                    f"{_results['efficiency']:.1f}%",
                 ])
         
         # Loss curves comparison
@@ -622,7 +622,7 @@ def __(training_results, mo, go, n_gpus):
         
         if 'single_gpu' in results:
             fig_loss.add_trace(go.Scatter(
-                y=results['single_gpu']['losses'],
+                y=_results['single_gpu']['losses'],
                 mode='lines',
                 name='Single GPU',
                 line=dict(color='#ff6b6b', width=2)
@@ -630,7 +630,7 @@ def __(training_results, mo, go, n_gpus):
         
         if 'multi_gpu' in results:
             fig_loss.add_trace(go.Scatter(
-                y=results['multi_gpu']['losses'],
+                y=_results['multi_gpu']['losses'],
                 mode='lines',
                 name=f'{n_gpus} GPUs',
                 line=dict(color='#51cf66', width=2)
@@ -649,9 +649,9 @@ def __(training_results, mo, go, n_gpus):
             
             fig_throughput.add_trace(go.Bar(
                 x=['Single GPU', f'{n_gpus} GPUs'],
-                y=[results['single_gpu']['throughput'], results['multi_gpu']['throughput']],
+                y=[_results['single_gpu']['throughput'], _results['multi_gpu']['throughput']],
                 marker_color=['#ff6b6b', '#51cf66'],
-                text=[f"{results['single_gpu']['throughput']:.1f}", f"{results['multi_gpu']['throughput']:.1f}"],
+                text=[f"{_results['single_gpu']['throughput']:.1f}", f"{_results['multi_gpu']['throughput']:.1f}"],
                 textposition='outside'
             ))
             
@@ -666,14 +666,14 @@ def __(training_results, mo, go, n_gpus):
             
             fig_scaling.add_trace(go.Bar(
                 x=['Speedup', 'Ideal Speedup'],
-                y=[results['speedup'], n_gpus],
+                y=[_results['speedup'], n_gpus],
                 marker_color=['#4c6ef5', '#adb5bd'],
-                text=[f"{results['speedup']:.2f}x", f"{n_gpus}x"],
+                text=[f"{_results['speedup']:.2f}x", f"{n_gpus}x"],
                 textposition='outside'
             ))
             
             fig_scaling.update_layout(
-                title=f"Scaling Performance ({results['efficiency']:.1f}% efficient)",
+                title=f"Scaling Performance ({_results['efficiency']:.1f}% efficient)",
                 yaxis_title="Speedup Factor",
                 height=400
             )
@@ -691,10 +691,10 @@ def __(training_results, mo, go, n_gpus):
                 mo.callout(
                     mo.md(f"""
                     **Multi-GPU Performance**:
-                    - Using **{n_gpus} GPUs** achieved **{results['speedup']:.2f}x** speedup
-                    - Scaling efficiency: **{results['efficiency']:.1f}%** (100% = perfect linear scaling)
-                    - Throughput increased from {results['single_gpu']['throughput']:.1f} to {results['multi_gpu']['throughput']:.1f} samples/s
-                    - Total training time reduced from {results['single_gpu']['total_time']:.1f}s to {results['multi_gpu']['total_time']:.1f}s
+                    - Using **{n_gpus} GPUs** achieved **{_results['speedup']:.2f}x** speedup
+                    - Scaling efficiency: **{_results['efficiency']:.1f}%** (100% = perfect linear scaling)
+                    - Throughput increased from {_results['single_gpu']['throughput']:.1f} to {_results['multi_gpu']['throughput']:.1f} samples/s
+                    - Total training time reduced from {_results['single_gpu']['total_time']:.1f}s to {_results['multi_gpu']['total_time']:.1f}s
                     
                     **Why not 100% efficient?**
                     - Communication overhead (gradient synchronization)
@@ -714,8 +714,8 @@ def __(training_results, mo, go, n_gpus):
                 mo.callout(
                     mo.md(f"""
                     **Single-GPU Training**:
-                    - Completed in **{results['single_gpu']['total_time']:.2f}s**
-                    - Throughput: **{results['single_gpu']['throughput']:.1f}** samples/s
+                    - Completed in **{_results['single_gpu']['total_time']:.2f}s**
+                    - Throughput: **{_results['single_gpu']['throughput']:.1f}** samples/s
                     - To see multi-GPU speedups, run on a system with 2+ GPUs
                     """),
                     kind="info"
