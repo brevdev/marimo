@@ -392,10 +392,12 @@ def __(
     
     benchmark_results = None
     
-    # Debug output to show button state
-    _button_clicked = run_benchmark_btn.value
+    # CRITICAL DEBUG: Show button state
+    _button_value = run_benchmark_btn.value
+    print(f"🔍 DEBUG: Button value = {_button_value}, Type = {type(_button_value)}")
     
-    if _button_clicked:
+    if _button_value > 0:
+        print(f"✅ DEBUG: Button clicked! Running benchmark with {len(operations.value)} operations")
         # Set random seeds for reproducibility
         np.random.seed(42)
         torch.manual_seed(42)
@@ -522,23 +524,28 @@ def __(
 
 
 @app.cell
-def __(run_benchmark_btn, benchmark_results, mo):
-    """Debug: Show benchmark status"""
-    if run_benchmark_btn.value:
-        if benchmark_results and benchmark_results.get('success'):
-            mo.md(f"✅ Benchmark completed! Mode: {benchmark_results.get('mode', 'unknown')}")
-        elif benchmark_results and not benchmark_results.get('success'):
-            mo.md(f"❌ Benchmark failed: {benchmark_results.get('error', 'unknown')}")
-        else:
-            mo.md("⏳ Running benchmark...")
-    else:
-        mo.md("")
-    return
-
-
-@app.cell
-def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE):
+def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE, run_benchmark_btn):
     """Visualize benchmark results"""
+    
+    # Show status based on button clicks and results
+    if run_benchmark_btn.value > 0:
+        if benchmark_results and benchmark_results.get('success'):
+            status = mo.callout(
+                mo.md(f"✅ **Benchmark completed!** Mode: `{benchmark_results.get('mode', 'unknown')}`"),
+                kind="success"
+            )
+        elif benchmark_results and not benchmark_results.get('success'):
+            status = mo.callout(
+                mo.md(f"❌ **Benchmark failed:** {benchmark_results.get('error', 'unknown')}"),
+                kind="danger"
+            )
+        else:
+            status = mo.callout(
+                mo.md("⏳ **Running benchmark...** This may take a moment."),
+                kind="info"
+            )
+    else:
+        status = None
     
     if benchmark_results is None:
         mo.callout(
@@ -643,7 +650,8 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE):
             max_speedup = max(_results['speedup'])
             min_speedup = min(_results['speedup'])
             
-            mo.vstack([
+            results_display = mo.vstack([
+                status if status else mo.md(""),
                 mo.md("### ✅ Benchmark Complete!"),
                 mo.ui.table(table_data, label="Performance Results"),
                 mo.md("### 📊 Execution Time Comparison"),
@@ -661,9 +669,11 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE):
                     kind="success"
                 )
             ])
+            results_display
         else:
             # CPU-only mode
-            mo.vstack([
+            cpu_results_display = mo.vstack([
+                status if status else mo.md(""),
                 mo.md("### ✅ Benchmark Complete (CPU-Only Mode)!"),
                 mo.callout(
                     mo.md(f"""
@@ -692,6 +702,7 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE):
                     kind="info"
                 )
             ])
+            cpu_results_display
     return
 
 
