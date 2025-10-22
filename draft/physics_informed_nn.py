@@ -69,8 +69,8 @@ def __(mo):
         without traditional numerical methods like finite elements or finite differences.
         
         **How PINNs Work**:
-        1. Neural network approximates solution: \( u(x,t) = \\text{NN}(x,t) \)
-        2. Automatic differentiation computes derivatives: \( \\frac{\\partial u}{\\partial t} \), \( \\frac{\\partial^2 u}{\\partial x^2} \)
+        1. Neural network approximates solution: \\( u(x,t) = \\text{NN}(x,t) \\)
+        2. Automatic differentiation computes derivatives: \\( \\frac{\\partial u}{\\partial t} \\), \\( \\frac{\\partial^2 u}{\\partial x^2} \\)
         3. Loss function enforces PDE + boundary/initial conditions
         4. Backpropagation trains network to satisfy physics
         
@@ -665,26 +665,26 @@ def __(mo):
         $$\\mathcal{L} = \\mathcal{L}_{PDE} + \\mathcal{L}_{BC} + \\mathcal{L}_{IC}$$
         
         Where:
-        - \( \\mathcal{L}_{PDE} = \\frac{1}{N} \\sum_{i=1}^{N} |\\mathcal{F}[u_{\\theta}](x_i, t_i)|^2 \) (PDE residual)
-        - \( \\mathcal{L}_{BC} = \\frac{1}{M} \\sum_{j=1}^{M} |u_{\\theta}(x_j, t_j) - g(x_j, t_j)|^2 \) (boundary conditions)
-        - \( \\mathcal{L}_{IC} = \\frac{1}{K} \\sum_{k=1}^{K} |u_{\\theta}(x_k, 0) - h(x_k)|^2 \) (initial conditions)
+        - \\( \\mathcal{L}_{PDE} = \\frac{1}{N} \\sum_{i=1}^{N} |\\mathcal{F}[u_{\\theta}](x_i, t_i)|^2 \\) (PDE residual)
+        - \\( \\mathcal{L}_{BC} = \\frac{1}{M} \\sum_{j=1}^{M} |u_{\\theta}(x_j, t_j) - g(x_j, t_j)|^2 \\) (boundary conditions)
+        - \\( \\mathcal{L}_{IC} = \\frac{1}{K} \\sum_{k=1}^{K} |u_{\\theta}(x_k, 0) - h(x_k)|^2 \\) (initial conditions)
         
         **Example PDEs Implemented**:
         
         **1. Heat Equation** (diffusion):
         $$\\frac{\\partial u}{\\partial t} = \\alpha \\frac{\\partial^2 u}{\\partial x^2}$$
         - Models: Heat transfer, chemical diffusion, option pricing
-        - \( \\alpha \): Thermal diffusivity
+        - \\( \\alpha \\): Thermal diffusivity
         
         **2. Wave Equation** (vibration):
         $$\\frac{\\partial^2 u}{\\partial t^2} = c^2 \\frac{\\partial^2 u}{\\partial x^2}$$
         - Models: String vibrations, sound waves, electromagnetic waves
-        - \( c \): Wave speed
+        - \\( c \\): Wave speed
         
         **3. Burgers' Equation** (nonlinear):
         $$\\frac{\\partial u}{\\partial t} + u \\frac{\\partial u}{\\partial x} = \\nu \\frac{\\partial^2 u}{\\partial x^2}$$
         - Models: Fluid flow, traffic flow, shock waves
-        - \( \\nu \): Viscosity
+        - \\( \\nu \\): Viscosity
         
         **GPU Acceleration Benefits**:
         - **Automatic Differentiation**: PyTorch autograd computes derivatives efficiently
