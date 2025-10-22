@@ -60,15 +60,25 @@ def __():
 
 
 @app.cell
-def __(mo, CUDF_AVAILABLE, subprocess, cudf):
-    """Auto-install cuDF if not available"""
+def __(mo, CUDF_AVAILABLE, subprocess):
+    """Auto-install cuDF if not available and ensure it's properly imported"""
     
-    # Initialize at cell level - keep same name for consistency
-    cudf_available = CUDF_AVAILABLE
-    cudf_module = cudf  # Start with the imported module (might be None)
+    # Always try to import cuDF fresh, don't rely on cell-1's import
+    cudf_module = None
+    cudf_available = False
     install_result = mo.md("")
     
-    if not CUDF_AVAILABLE:
+    # Try importing cuDF first
+    try:
+        import cudf as cudf_module
+        cudf_available = True
+        print("✅ cuDF already available and imported")
+    except ImportError:
+        cudf_module = None
+        cudf_available = False
+        print("⚠️ cuDF not found, attempting installation...")
+    
+    if not cudf_available:
         with mo.status.spinner(title="Installing cuDF for GPU acceleration...", subtitle="This takes 2-3 minutes"):
             try:
                 result = subprocess.run(
