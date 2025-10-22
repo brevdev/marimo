@@ -571,6 +571,21 @@ def __(
                 _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
                 _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
                 
+                # Initialize GPU monitoring
+                _gpu_metrics = {
+                    'peak_utilization': 0,
+                    'peak_memory_mb': 0,
+                    'avg_utilization': 0,
+                    'samples': []
+                }
+                
+                # Try to import GPUtil for GPU monitoring
+                try:
+                    import GPUtil
+                    _gputil_available = True
+                except ImportError:
+                    _gputil_available = False
+                
                 # Convert pandas DataFrame to cuDF once if needed
                 _cudf_df = None
                 
@@ -610,7 +625,38 @@ def __(
                     # cuDF benchmark (run if mode includes GPU AND cuDF available)
                     if _run_gpu and _cudf_df is not None:
                         try:
+                            # Capture GPU metrics before operation
+                            if _gputil_available:
+                                try:
+                                    gpus = GPUtil.getGPUs()
+                                    if gpus:
+                                        gpu = gpus[0]
+                                        _gpu_metrics['samples'].append({
+                                            'util': gpu.load * 100,
+                                            'mem': gpu.memoryUsed
+                                        })
+                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
+                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                except:
+                                    pass
+                            
                             cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
+                            
+                            # Capture GPU metrics after operation
+                            if _gputil_available:
+                                try:
+                                    gpus = GPUtil.getGPUs()
+                                    if gpus:
+                                        gpu = gpus[0]
+                                        _gpu_metrics['samples'].append({
+                                            'util': gpu.load * 100,
+                                            'mem': gpu.memoryUsed
+                                        })
+                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
+                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                except:
+                                    pass
+                            
                             speedup = pandas_time / cudf_time if (pandas_time and cudf_time) else None
                             print(f"  ✅ cuDF: {cudf_time:.4f}s (speedup: {speedup:.1f}x)" if speedup else f"  ✅ cuDF: {cudf_time:.4f}s")
                         except Exception as e:
@@ -629,11 +675,16 @@ def __(
                     _results['speedup'].append(speedup)
                     _results['result_size'].append(result_size)
                 
+                # Calculate average GPU utilization
+                if _gpu_metrics['samples']:
+                    _gpu_metrics['avg_utilization'] = sum(s['util'] for s in _gpu_metrics['samples']) / len(_gpu_metrics['samples'])
+                
                 benchmark_results = {
                     'results': _results,
                     'n_rows': _n_rows,
                     'mode': _mode,
-                    'success': True
+                    'success': True,
+                    'gpu_metrics': _gpu_metrics if _run_gpu and _gpu_metrics['samples'] else None
                 }
                 
                 # Cleanup GPU memory
@@ -806,19 +857,43 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 max_speedup = 0
                 min_speedup = 0
             
-            # Determine callout kind and message based on performance
+            # Determine callout kind and message based on performance and GPU utilization
+            _gpu_util = benchmark_results.get('gpu_metrics', {}).get('peak_utilization', 0)
+            
             if avg_speedup >= 5:
                 _perf_kind = "success"
-                _perf_note = "🚀 GPU is crushing it! This is the sweet spot for GPU acceleration."
+                if _gpu_util >= 90:
+                    _perf_note = "🚀 GPU is crushing it at full throttle! This is the sweet spot for GPU acceleration."
+                elif _gpu_util >= 70:
+                    _perf_note = "🚀 GPU is crushing it! Try increasing to 100M rows to hit 100% utilization."
+                else:
+                    _perf_note = "🚀 Great speedup! GPU still has headroom - try larger datasets (50M-100M rows)."
             elif avg_speedup >= 2:
                 _perf_kind = "success"
-                _perf_note = "✅ GPU is significantly faster! Try 10M-100M rows to push GPU to 100% utilization."
+                if _gpu_util >= 90:
+                    _perf_note = "✅ GPU is significantly faster at full utilization!"
+                elif _gpu_util >= 50:
+                    _perf_note = "✅ GPU is significantly faster! Try 10M-100M rows to push GPU to 100% utilization."
+                else:
+                    _perf_note = "✅ GPU is faster, but only using {_gpu_util:.0f}% - increase dataset size for more speedup."
             elif avg_speedup >= 1:
                 _perf_kind = "info"
                 _perf_note = "💡 GPU shows modest gains. Increase dataset size (10M+ rows) for dramatic speedup."
             else:
                 _perf_kind = "warn"
                 _perf_note = "⚠️ CPU is faster on this dataset size. GPU excels with 10M+ rows due to parallelism overhead."
+            
+            # Build GPU metrics string if available
+            _gpu_metrics_str = ""
+            if benchmark_results.get('gpu_metrics'):
+                _gm = benchmark_results['gpu_metrics']
+                _gpu_metrics_str = f"""
+                    
+                    **GPU Utilization During Benchmark**:
+                    - Peak GPU Utilization: **{_gm['peak_utilization']:.1f}%**
+                    - Average GPU Utilization: **{_gm['avg_utilization']:.1f}%**
+                    - Peak GPU Memory: **{_gm['peak_memory_mb']:.0f} MB**
+                """
             
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
@@ -834,6 +909,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                     - Best Speedup: **{max_speedup:.1f}x** ({_results['operation'][_results['speedup'].index(max_speedup)]})
                     - Minimum Speedup: **{min_speedup:.1f}x**
                     - Dataset Size: **{_n_rows:,}** rows
+                    {_gpu_metrics_str}
                     
                     {_perf_note}
                     """),
