@@ -199,21 +199,39 @@ def __(torch, mo, subprocess):
     
     gpu_info = get_gpu_info()
     
-    if gpu_info['available']:
-        mo.callout(
-            mo.vstack([
-                mo.md("**✅ GPU Ready**"),
-                mo.ui.table(gpu_info['gpus'])
-            ]),
-            kind="success"
-        )
-    else:
-        mo.callout(
-            mo.md(f"⚠️ **No GPU detected**: {gpu_info.get('error', 'Unknown')}"),
-            kind="warn"
+    # Stop execution if no GPU available (Stable Diffusion requires GPU)
+    if not gpu_info['available']:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires an NVIDIA GPU for Stable Diffusion image generation.
+                
+                **Error**: {gpu_info.get('error', 'Unknown')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: Stable Diffusion on CPU is too slow for practical use.
+                """),
+                kind="danger"
+            )
         )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Display GPU info
+    mo.callout(
+        mo.vstack([
+            mo.md("**✅ GPU Ready for Stable Diffusion**"),
+            mo.ui.table(gpu_info['gpus'])
+        ]),
+        kind="success"
+    )
+    
+    device = torch.device("cuda")
     
     return get_gpu_info, gpu_info, device
 
@@ -285,32 +303,36 @@ def __(Image, io, base64):
 def __(
     generate_btn, DIFFUSERS_AVAILABLE, device, StableDiffusionPipeline,
     prompt_input, negative_prompt_input, num_inference_steps,
-    guidance_scale, image_size, num_images, use_trt, torch, time, mo
+    guidance_scale, image_size, num_images, use_trt, torch, time, mo, np
 ):
     """Image generation"""
     
     generation_results = None
     
     if generate_btn.value and DIFFUSERS_AVAILABLE:
-        mo.md("### 🎨 Generating images...")
+        # Set random seeds for reproducibility
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        np.random.seed(42)
         
-        try:
-            # Parse image size
-            width, height = map(int, image_size.value.split('x'))
-            
-            # Load pipeline (cached after first load)
-            if not hasattr(generate_btn, '_pipeline'):
-                mo.md("Loading Stable Diffusion model (first run takes ~1 min)...")
+        with mo.status.spinner(
+            title="🎨 Generating images with Stable Diffusion...",
+            subtitle=f"Prompt: '{prompt_input.value[:50]}...', Steps: {num_inference_steps.value}"
+        ):
+            try:
+                # Parse image size
+                width, height = map(int, image_size.value.split('x'))
                 
-                pipe = StableDiffusionPipeline.from_pretrained(
-                    "runwayml/stable-diffusion-v1-5",
-                    torch_dtype=torch.float16 if device.type == "cuda" else torch.float32,
-                    safety_checker=None  # Disable for faster loading
-                )
-                pipe = pipe.to(device)
-                
-                # Enable optimizations
-                if device.type == "cuda":
+                # Load pipeline (cached after first load)
+                if not hasattr(generate_btn, '_pipeline'):
+                    pipe = StableDiffusionPipeline.from_pretrained(
+                        "runwayml/stable-diffusion-v1-5",
+                        torch_dtype=torch.float16,
+                        safety_checker=None  # Disable for faster loading
+                    )
+                    pipe = pipe.to(device)
+                    
+                    # Enable optimizations
                     # Enable attention slicing for memory efficiency
                     pipe.enable_attention_slicing()
                     
@@ -325,53 +347,79 @@ def __(
                                 mode="reduce-overhead",
                                 fullgraph=True
                             )
-                            mo.md("✅ TensorRT optimization enabled")
                         except Exception as e:
-                            mo.md(f"⚠️ TensorRT compilation failed: {e}")
+                            pass  # TensorRT compilation is optional
+                    
+                    generate_btn._pipeline = pipe
+                else:
+                    pipe = generate_btn._pipeline
                 
-                generate_btn._pipeline = pipe
-            else:
-                pipe = generate_btn._pipeline
-            
-            # Generate images
-            start_time = time.time()
-            
-            with torch.inference_mode():
-                output = pipe(
-                    prompt=prompt_input.value,
-                    negative_prompt=negative_prompt_input.value if negative_prompt_input.value else None,
-                    num_inference_steps=num_inference_steps.value,
-                    guidance_scale=guidance_scale.value,
-                    width=width,
-                    height=height,
-                    num_images_per_prompt=num_images.value,
-                    generator=torch.Generator(device=device).manual_seed(42)
-                )
-            
-            if device.type == "cuda":
+                # Generate images
+                start_time = time.time()
+                
+                with torch.inference_mode():
+                    output = pipe(
+                        prompt=prompt_input.value,
+                        negative_prompt=negative_prompt_input.value if negative_prompt_input.value else None,
+                        num_inference_steps=num_inference_steps.value,
+                        guidance_scale=guidance_scale.value,
+                        width=width,
+                        height=height,
+                        num_images_per_prompt=num_images.value,
+                        generator=torch.Generator(device=device).manual_seed(42)
+                    )
+                
                 torch.cuda.synchronize()
-            
-            generation_time = time.time() - start_time
-            
-            generation_results = {
-                'images': output.images,
-                'prompt': prompt_input.value,
-                'negative_prompt': negative_prompt_input.value,
-                'steps': num_inference_steps.value,
-                'guidance': guidance_scale.value,
-                'size': f"{width}x{height}",
-                'num_images': num_images.value,
-                'generation_time': generation_time,
-                'time_per_image': generation_time / num_images.value,
-                'trt_enabled': use_trt.value,
-                'success': True
-            }
-            
-        except Exception as e:
-            generation_results = {
-                'error': str(e),
-                'success': False
-            }
+                
+                generation_time = time.time() - start_time
+                
+                generation_results = {
+                    'images': output.images,
+                    'prompt': prompt_input.value,
+                    'negative_prompt': negative_prompt_input.value,
+                    'steps': num_inference_steps.value,
+                    'guidance': guidance_scale.value,
+                    'size': f"{width}x{height}",
+                    'num_images': num_images.value,
+                    'generation_time': generation_time,
+                    'time_per_image': generation_time / num_images.value,
+                    'trt_enabled': use_trt.value,
+                    'success': True
+                }
+                
+                # Cleanup
+                torch.cuda.empty_cache()
+                
+            except torch.cuda.OutOfMemoryError:
+                # Handle GPU OOM explicitly
+                torch.cuda.empty_cache()
+                generation_results = {
+                    'error': 'GPU Out of Memory',
+                    'suggestion': f"""
+**GPU ran out of memory!**
+
+**Current settings**:
+- Image size: {image_size.value}
+- Number of images: {num_images.value}
+- Inference steps: {num_inference_steps.value}
+
+**Try these solutions**:
+1. Reduce image size (try 512x512)
+2. Generate fewer images at once (try 1)
+3. Reduce inference steps (try 20)
+4. Close other GPU applications
+5. Clear GPU cache and restart kernel
+
+**GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
+                    """,
+                    'success': False
+                }
+            except Exception as e:
+                generation_results = {
+                    'error': str(e),
+                    'error_type': type(e).__name__,
+                    'success': False
+                }
     
     return generation_results,
 
@@ -396,8 +444,14 @@ def __(generation_results, mo, create_image_html, DIFFUSERS_AVAILABLE):
             kind="info"
         )
     elif not generation_results.get('success', False):
+        error_msg = f"**Generation Error**: {generation_results.get('error', 'Unknown')}"
+        if 'suggestion' in generation_results:
+            error_msg += f"\n\n{generation_results['suggestion']}"
+        if 'error_type' in generation_results:
+            error_msg += f"\n\n*Error type: {generation_results['error_type']}*"
+        
         mo.callout(
-            mo.md(f"**Generation Error**: {generation_results.get('error', 'Unknown')}"),
+            mo.md(error_msg),
             kind="danger"
         )
     else:

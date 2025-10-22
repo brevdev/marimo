@@ -165,27 +165,49 @@ def __(torch, mo, subprocess):
     gpu_info = get_gpu_info()
     n_gpus = torch.cuda.device_count()
     
-    if gpu_info['available'] and n_gpus > 0:
-        mo.callout(
-            mo.vstack([
-                mo.md(f"**✅ {n_gpus} GPU(s) Detected for Distributed Training**"),
-                mo.ui.table(gpu_info['gpus'])
-            ]),
-            kind="success" if n_gpus > 1 else "warn"
-        )
-        
-        if n_gpus == 1:
+    # Stop execution if no GPU available
+    if not gpu_info['available'] or n_gpus == 0:
+        mo.stop(
+            True,
             mo.callout(
-                mo.md("**Note**: Only 1 GPU detected. Will demonstrate single-GPU training. Multi-GPU requires 2+ GPUs."),
-                kind="info"
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires at least 1 NVIDIA GPU for training.
+                
+                **Error**: {gpu_info.get('error', 'No CUDA devices found')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: Multi-GPU training requires 2+ GPUs, but single GPU will work for demonstration.
+                """),
+                kind="danger"
             )
-    else:
-        mo.callout(
-            mo.md(f"⚠️ **No GPU detected**: {gpu_info.get('error', 'Unknown')}"),
-            kind="warn"
         )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Display GPU info with warning if only 1 GPU
+    if n_gpus == 1:
+        mo.callout(
+            mo.vstack([
+                mo.md(f"**⚠️ Single GPU Detected**"),
+                mo.ui.table(gpu_info['gpus']),
+                mo.md("**Note**: Multi-GPU features will be demonstrated in comparison mode only. For true distributed training, use 2+ GPUs.")
+            ]),
+            kind="warn"
+        )
+    else:
+        mo.callout(
+            mo.vstack([
+                mo.md(f"**✅ {n_gpus} GPUs Detected for Distributed Training**"),
+                mo.ui.table(gpu_info['gpus'])
+            ]),
+            kind="success"
+        )
+    
+    device = torch.device("cuda")
     
     return get_gpu_info, gpu_info, n_gpus, device
 
@@ -422,69 +444,105 @@ def __(torch, time, nn, F):
 def __(
     train_btn, model_size, batch_size, num_epochs, compare_modes,
     get_model, count_parameters, create_synthetic_data, train_single_gpu,
-    train_multi_gpu_simulated, n_gpus, device, mo
+    train_multi_gpu_simulated, n_gpus, device, mo, torch, np
 ):
     """Run distributed training"""
     
     training_results = None
     
     if train_btn.value:
-        mo.md("### 🔄 Training model...")
+        # Set random seeds for reproducibility
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)  # For multi-GPU
+        np.random.seed(42)
         
-        try:
-            # Initialize model
-            model = get_model(model_size.value)
-            n_params = count_parameters(model)
-            
-            mo.md(f"Model has {n_params:,} trainable parameters")
-            
-            # Create synthetic data
-            num_batches = 50
-            per_gpu_batch = batch_size.value // max(n_gpus, 1)
-            
-            data_single = create_synthetic_data(batch_size.value, num_batches, str(device))
-            
-            results = {
-                'model_params': n_params,
-                'total_batch_size': batch_size.value,
-                'n_gpus': n_gpus
-            }
-            
-            # Single-GPU training
-            if compare_modes.value or n_gpus <= 1:
-                mo.md("Training on single GPU...")
-                model_single = get_model(model_size.value)
-                single_results = train_single_gpu(
-                    model_single, data_single, num_epochs.value, str(device)
-                )
-                results['single_gpu'] = single_results
-            
-            # Multi-GPU training
-            if n_gpus > 1:
-                mo.md(f"Training on {n_gpus} GPUs...")
-                model_multi = get_model(model_size.value)
-                multi_results = train_multi_gpu_simulated(
-                    model_multi, data_single, num_epochs.value, n_gpus
-                )
-                results['multi_gpu'] = multi_results
+        with mo.status.spinner(
+            title=f"🚀 Training on {n_gpus} GPU(s)...",
+            subtitle=f"Model: {model_size.value}, Batch: {batch_size.value}, Epochs: {num_epochs.value}"
+        ):
+            try:
+                # Initialize model
+                model = get_model(model_size.value)
+                n_params = count_parameters(model)
                 
-                # Calculate speedup
-                if 'single_gpu' in results:
-                    speedup = single_results['total_time'] / multi_results['total_time']
-                    efficiency = speedup / n_gpus * 100
-                    results['speedup'] = speedup
-                    results['efficiency'] = efficiency
-            
-            training_results = {
-                'results': results,
-                'success': True
-            }
-            
-        except Exception as e:
-            training_results = {
-                'error': str(e),
-                'success': False
-            }
+                # Create synthetic data
+                num_batches = 50
+                per_gpu_batch = batch_size.value // max(n_gpus, 1)
+                
+                data_single = create_synthetic_data(batch_size.value, num_batches, str(device))
+                
+                results = {
+                    'model_params': n_params,
+                    'total_batch_size': batch_size.value,
+                    'n_gpus': n_gpus
+                }
+                
+                # Single-GPU training
+                if compare_modes.value or n_gpus <= 1:
+                    model_single = get_model(model_size.value)
+                    single_results = train_single_gpu(
+                        model_single, data_single, num_epochs.value, str(device)
+                    )
+                    results['single_gpu'] = single_results
+                
+                # Multi-GPU training
+                if n_gpus > 1:
+                    model_multi = get_model(model_size.value)
+                    multi_results = train_multi_gpu_simulated(
+                        model_multi, data_single, num_epochs.value, n_gpus
+                    )
+                    results['multi_gpu'] = multi_results
+                    
+                    # Calculate speedup
+                    if 'single_gpu' in results:
+                        speedup = single_results['total_time'] / multi_results['total_time']
+                        efficiency = speedup / n_gpus * 100
+                        results['speedup'] = speedup
+                        results['efficiency'] = efficiency
+                
+                training_results = {
+                    'results': results,
+                    'success': True
+                }
+                
+                # Cleanup GPU memory
+                del model
+                if 'model_single' in locals():
+                    del model_single
+                if 'model_multi' in locals():
+                    del model_multi
+                torch.cuda.empty_cache()
+                
+            except torch.cuda.OutOfMemoryError:
+                # Handle GPU OOM explicitly
+                torch.cuda.empty_cache()
+                training_results = {
+                    'error': 'GPU Out of Memory',
+                    'suggestion': f"""
+**GPU ran out of memory!**
+
+**Current settings**:
+- Model: {model_size.value}
+- Batch size: {batch_size.value}
+- Number of GPUs: {n_gpus}
+- Per-GPU batch: {batch_size.value // max(n_gpus, 1)}
+
+**Try these solutions**:
+1. Reduce batch size (try {max(32, batch_size.value // 2)})
+2. Use smaller model (try "Small")
+3. Close other GPU applications
+4. If multi-GPU, check if all GPUs are accessible
+
+**Available GPUs**: {n_gpus}
+                    """,
+                    'success': False
+                }
+            except Exception as e:
+                training_results = {
+                    'error': str(e),
+                    'error_type': type(e).__name__,
+                    'success': False
+                }
     
     return training_results,
 
@@ -499,8 +557,14 @@ def __(training_results, mo, go, n_gpus):
             kind="info"
         )
     elif not training_results.get('success', False):
+        error_msg = f"**Training Error**: {training_results.get('error', 'Unknown')}"
+        if 'suggestion' in training_results:
+            error_msg += f"\n\n{training_results['suggestion']}"
+        if 'error_type' in training_results:
+            error_msg += f"\n\n*Error type: {training_results['error_type']}*"
+        
         mo.callout(
-            mo.md(f"**Training Error**: {training_results.get('error', 'Unknown')}"),
+            mo.md(error_msg),
             kind="danger"
         )
     else:

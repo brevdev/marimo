@@ -390,15 +390,15 @@ def __(
                 # Training loop
                 mo.output.append(mo.md("**Step 4/6:** Training model..."))
                 model.train()
-                losses = []
-                times = []
-                epoch_stats = []
-                gpu_memory_samples = []
-                start_time = time.time()
+                _losses = []
+                _times = []
+                _epoch_stats = []
+                _gpu_memory_samples = []
+                _start_time = time.time()
                 
                 for epoch in range(num_epochs.value):
-                    epoch_losses = []
-                    epoch_start = time.time()
+                    _epoch_losses = []
+                    _epoch_start = time.time()
                     
                     for batch_idx, batch in enumerate(dataloader):
                         input_ids = batch['input_ids'].to(device)
@@ -428,40 +428,40 @@ def __(
                         optimizer.step()
                         
                         # Track metrics
-                        epoch_losses.append(loss.item())
-                        losses.append(loss.item())
-                        times.append(time.time() - start_time)
+                        _epoch_losses.append(loss.item())
+                        _losses.append(loss.item())
+                        _times.append(time.time() - _start_time)
                         
                         # Sample GPU memory periodically
                         if batch_idx % 5 == 0 and device.type == "cuda":
-                            gpu_memory_samples.append({
-                                'time': time.time() - start_time,
+                            _gpu_memory_samples.append({
+                                'time': time.time() - _start_time,
                                 'memory_gb': torch.cuda.memory_allocated(0) / 1024**3
                             })
                     
                     # Epoch summary
-                    epoch_time = time.time() - epoch_start
-                    epoch_stats.append({
+                    _epoch_time = time.time() - _epoch_start
+                    _epoch_stats.append({
                         'epoch': epoch + 1,
-                        'avg_loss': np.mean(epoch_losses),
-                        'time': epoch_time
+                        'avg_loss': np.mean(_epoch_losses),
+                        'time': _epoch_time
                     })
-                    mo.output.append(mo.md(f"  Epoch {epoch+1}/{num_epochs.value}: Loss = {np.mean(epoch_losses):.4f}, Time = {epoch_time:.1f}s"))
+                    mo.output.append(mo.md(f"  Epoch {epoch+1}/{num_epochs.value}: Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s"))
                 
-                total_time = time.time() - start_time
+                _total_time = time.time() - _start_time
                 
                 # Generate multiple sample outputs
                 mo.output.append(mo.md("**Step 5/6:** Generating sample outputs..."))
                 model.eval()
-                sample_prompts = [
+                _sample_prompts = [
                     "Translate English to French: Hello",
                     "Summarize this text: Machine learning is transforming",
                     "Answer the question: What is AI?",
                 ]
-                generated_samples = []
+                _generated_samples = []
                 
                 with torch.no_grad():
-                    for prompt in sample_prompts:
+                    for prompt in _sample_prompts:
                         inputs = tokenizer(prompt, return_tensors="pt").to(device)
                         outputs = model.generate(
                             **inputs,
@@ -471,23 +471,23 @@ def __(
                             do_sample=True
                         )
                         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                        generated_samples.append({'prompt': prompt, 'output': generated_text})
+                        _generated_samples.append({'prompt': prompt, 'output': generated_text})
             
                 mo.output.append(mo.md("**Step 6/6:** Finalizing results..."))
                 training_results = {
-                    'losses': losses,
-                    'times': times,
-                    'total_time': total_time,
+                    'losses': _losses,
+                    'times': _times,
+                    'total_time': _total_time,
                     'total_params': total_params,
                     'trainable_params': trainable_params,
                     'lora_params': lora_params,
-                    'final_loss': losses[-1],
-                    'avg_loss': np.mean(losses[-10:]),
-                    'generated_samples': generated_samples,
-                    'epoch_stats': epoch_stats,
-                    'gpu_memory_samples': gpu_memory_samples,
-                    'num_batches': len(losses),
-                    'samples_per_sec': len(losses) * batch_size.value / total_time
+                    'final_loss': _losses[-1],
+                    'avg_loss': np.mean(_losses[-10:]),
+                    'generated_samples': _generated_samples,
+                    'epoch_stats': _epoch_stats,
+                    'gpu_memory_samples': _gpu_memory_samples,
+                    'num_batches': len(_losses),
+                    'samples_per_sec': len(_losses) * batch_size.value / _total_time
                 }
                 
                 # Cleanup GPU memory
@@ -585,24 +585,24 @@ def __(training_results, mo, go, pd, np):
         ], justify="space-around")
         
         # 2. Loss curve with smoothing
-        losses = training_results['losses']
-        times = training_results['times']
+        loss_values = training_results['losses']
+        time_values = training_results['times']
         
         # Calculate smoothed loss (moving average)
-        window = min(10, len(losses) // 5)
+        window = min(10, len(loss_values) // 5)
         if window > 1:
-            smoothed = np.convolve(losses, np.ones(window)/window, mode='valid')
-            smooth_times = times[window-1:]
+            smoothed = np.convolve(loss_values, np.ones(window)/window, mode='valid')
+            smooth_times = time_values[window-1:]
         else:
-            smoothed = losses
-            smooth_times = times
+            smoothed = loss_values
+            smooth_times = time_values
         
         fig_loss = go.Figure()
         
         # Raw loss
         fig_loss.add_trace(go.Scatter(
-            x=times,
-            y=losses,
+            x=time_values,
+            y=loss_values,
             mode='lines',
             name='Raw Loss',
             line=dict(color='rgba(150, 150, 150, 0.3)', width=1),

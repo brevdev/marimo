@@ -144,21 +144,65 @@ def __(torch, mo, subprocess):
     
     gpu_info = get_gpu_info()
     
-    if gpu_info['available']:
-        mo.callout(
-            mo.vstack([
-                mo.md("**✅ GPU Ready for TensorRT**"),
-                mo.ui.table(gpu_info['gpus'])
-            ]),
-            kind="success"
-        )
-    else:
-        mo.callout(
-            mo.md(f"⚠️ **No GPU detected**: {gpu_info.get('error', 'Unknown')}"),
-            kind="warn"
+    # Stop execution if no GPU available (TensorRT requires GPU)
+    if not gpu_info['available']:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires an NVIDIA GPU for TensorRT optimization.
+                
+                **Error**: {gpu_info.get('error', 'Unknown')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: TensorRT requires GPU for model optimization.
+                """),
+                kind="danger"
+            )
         )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Check compute capability (TensorRT requires 7.0+)
+    compute_cap = float(gpu_info['gpus'][0]['Compute Cap'])
+    if compute_cap < 7.0:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **Incompatible GPU Compute Capability**
+                
+                **Your GPU**: {gpu_info['gpus'][0]['Model']} (Compute {compute_cap})
+                **Required**: Compute Capability 7.0+ (Volta or newer)
+                
+                **Compatible GPUs**:
+                - V100 (Compute 7.0)
+                - T4 (Compute 7.5)
+                - RTX series (Compute 7.5+)
+                - A100 (Compute 8.0)
+                - L4/L40/L40S (Compute 8.9)
+                - H100/H200 (Compute 9.0)
+                
+                TensorRT optimizations require modern GPU architecture.
+                """),
+                kind="danger"
+            )
+        )
+    
+    # Display GPU info
+    mo.callout(
+        mo.vstack([
+            mo.md(f"**✅ GPU Ready for TensorRT** (Compute {compute_cap})"),
+            mo.ui.table(gpu_info['gpus'])
+        ]),
+        kind="success"
+    )
+    
+    device = torch.device("cuda")
     
     return get_gpu_info, gpu_info, device
 
@@ -274,82 +318,114 @@ def __(torch, time, np):
 def __(
     optimize_btn, model_choice, precision_mode, batch_size,
     num_iterations, get_model, device, benchmark_model,
-    torch, TRT_AVAILABLE, torch_tensorrt, mo
+    torch, TRT_AVAILABLE, torch_tensorrt, mo, np
 ):
     """Optimization and benchmarking"""
     
     optimization_results = None
     
     if optimize_btn.value:
-        mo.md("### 🔄 Optimizing model...")
+        # Set random seeds for reproducibility
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        np.random.seed(42)
         
-        try:
-            # Load model
-            model = get_model(model_choice.value, pretrained=True)
-            model = model.to(device).eval()
-            
-            input_shape = (batch_size.value, 3, 224, 224)
-            
-            # Benchmark original PyTorch model
-            mo.md("Benchmarking PyTorch model...")
-            pytorch_results = benchmark_model(
-                model, 
-                input_shape, 
-                num_iterations=num_iterations.value,
-                device=str(device)
-            )
-            
-            # TensorRT optimization
-            trt_results = None
-            if TRT_AVAILABLE and device.type == 'cuda':
-                try:
-                    mo.md("Converting to TensorRT...")
-                    
-                    # Prepare example input
-                    example_input = torch.randn(input_shape, device=device)
-                    
-                    # Set precision
-                    enabled_precisions = {torch.float32}
-                    if precision_mode.value == 'FP16':
-                        enabled_precisions.add(torch.float16)
-                    elif precision_mode.value == 'INT8':
-                        enabled_precisions.add(torch.float16)
-                        enabled_precisions.add(torch.int8)
-                    
-                    # Compile with Torch-TensorRT
-                    trt_model = torch_tensorrt.compile(
-                        model,
-                        inputs=[torch_tensorrt.Input(input_shape)],
-                        enabled_precisions=enabled_precisions,
-                        workspace_size=1 << 30,  # 1GB
-                    )
-                    
-                    mo.md("Benchmarking TensorRT model...")
-                    trt_results = benchmark_model(
-                        trt_model,
-                        input_shape,
-                        num_iterations=num_iterations.value,
-                        device=str(device)
-                    )
-                    
-                except Exception as trt_error:
-                    trt_results = {'error': str(trt_error)}
-            
-            optimization_results = {
-                'model_name': model_choice.value,
-                'precision': precision_mode.value,
-                'batch_size': batch_size.value,
-                'input_shape': input_shape,
-                'pytorch': pytorch_results,
-                'tensorrt': trt_results,
-                'success': True
-            }
-            
-        except Exception as e:
-            optimization_results = {
-                'error': str(e),
-                'success': False
-            }
+        with mo.status.spinner(
+            title=f"🚀 Optimizing {model_choice.value} with TensorRT...",
+            subtitle=f"Mode: {precision_mode.value}, Batch: {batch_size.value}"
+        ):
+            try:
+                # Load model
+                model = get_model(model_choice.value, pretrained=True)
+                model = model.to(device).eval()
+                
+                input_shape = (batch_size.value, 3, 224, 224)
+                
+                # Benchmark original PyTorch model
+                pytorch_results = benchmark_model(
+                    model, 
+                    input_shape, 
+                    num_iterations=num_iterations.value,
+                    device=str(device)
+                )
+                
+                # TensorRT optimization
+                trt_results = None
+                if TRT_AVAILABLE and device.type == 'cuda':
+                    try:
+                        # Prepare example input
+                        example_input = torch.randn(input_shape, device=device)
+                        
+                        # Set precision
+                        enabled_precisions = {torch.float32}
+                        if precision_mode.value == 'FP16':
+                            enabled_precisions.add(torch.float16)
+                        elif precision_mode.value == 'INT8':
+                            enabled_precisions.add(torch.float16)
+                            enabled_precisions.add(torch.int8)
+                        
+                        # Compile with Torch-TensorRT
+                        trt_model = torch_tensorrt.compile(
+                            model,
+                            inputs=[torch_tensorrt.Input(input_shape)],
+                            enabled_precisions=enabled_precisions,
+                            workspace_size=1 << 30,  # 1GB
+                        )
+                        
+                        trt_results = benchmark_model(
+                            trt_model,
+                            input_shape,
+                            num_iterations=num_iterations.value,
+                            device=str(device)
+                        )
+                        
+                    except Exception as trt_error:
+                        trt_results = {'error': str(trt_error)}
+                
+                optimization_results = {
+                    'model_name': model_choice.value,
+                    'precision': precision_mode.value,
+                    'batch_size': batch_size.value,
+                    'input_shape': input_shape,
+                    'pytorch': pytorch_results,
+                    'tensorrt': trt_results,
+                    'success': True
+                }
+                
+                # Cleanup GPU memory
+                del model
+                if trt_results and 'error' not in trt_results:
+                    del trt_model
+                torch.cuda.empty_cache()
+                
+            except torch.cuda.OutOfMemoryError:
+                # Handle GPU OOM explicitly
+                torch.cuda.empty_cache()
+                optimization_results = {
+                    'error': 'GPU Out of Memory',
+                    'suggestion': f"""
+**GPU ran out of memory!**
+
+**Current settings**:
+- Model: {model_choice.value}
+- Batch size: {batch_size.value}
+- Precision: {precision_mode.value}
+
+**Try these solutions**:
+1. Reduce batch size (try {max(1, batch_size.value // 2)})
+2. Use smaller model (e.g., ResNet18 or MobileNet)
+3. Close other GPU applications
+
+**GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
+                    """,
+                    'success': False
+                }
+            except Exception as e:
+                optimization_results = {
+                    'error': str(e),
+                    'error_type': type(e).__name__,
+                    'success': False
+                }
     
     return optimization_results,
 
@@ -364,8 +440,14 @@ def __(optimization_results, mo, go, TRT_AVAILABLE):
             kind="info"
         )
     elif not optimization_results.get('success', False):
+        error_msg = f"**Error**: {optimization_results.get('error', 'Unknown error')}"
+        if 'suggestion' in optimization_results:
+            error_msg += f"\n\n{optimization_results['suggestion']}"
+        if 'error_type' in optimization_results:
+            error_msg += f"\n\n*Error type: {optimization_results['error_type']}*"
+        
         mo.callout(
-            mo.md(f"**Error**: {optimization_results.get('error', 'Unknown error')}"),
+            mo.md(error_msg),
             kind="danger"
         )
     else:
