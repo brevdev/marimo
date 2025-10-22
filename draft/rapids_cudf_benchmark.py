@@ -63,9 +63,9 @@ def __():
 def __(mo, CUDF_AVAILABLE, subprocess):
     """Auto-install cuDF if not available"""
     
-    # Initialize these at cell level to ensure they're always defined
-    _CUDF_AVAILABLE = CUDF_AVAILABLE
-    _install_result = mo.md("")
+    # Initialize at cell level - keep same name for consistency
+    cudf_available = CUDF_AVAILABLE
+    install_result = mo.md("")
     
     if not CUDF_AVAILABLE:
         with mo.status.spinner(title="Installing cuDF for GPU acceleration...", subtitle="This takes 2-3 minutes"):
@@ -78,34 +78,32 @@ def __(mo, CUDF_AVAILABLE, subprocess):
                 )
                 
                 if result.returncode == 0:
-                    _install_result = mo.callout(
+                    install_result = mo.callout(
                         mo.md("✅ **cuDF installed!** Restart the notebook to activate GPU acceleration."),
                         kind="success"
                     )
                     # Try importing again (may need kernel restart)
                     try:
                         import cudf as _cudf
-                        _CUDF_AVAILABLE = True
+                        cudf_available = True
                     except ImportError:
-                        _CUDF_AVAILABLE = False
+                        cudf_available = False
                 else:
-                    _install_result = mo.callout(
+                    install_result = mo.callout(
                         mo.md(f"⚠️ **Could not auto-install cuDF**. Install manually:\n```bash\npip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com\n```"),
                         kind="warn"
                     )
             except Exception as e:
-                _install_result = mo.callout(
+                install_result = mo.callout(
                     mo.md(f"⚠️ **Install skipped**: {str(e)[:100]}. Running CPU-only mode."),
                     kind="warn"
                 )
     
-    # CRITICAL: Use explicit variable names in return tuple
-    install_result = _install_result
-    return _CUDF_AVAILABLE, install_result
+    return cudf_available, install_result
 
 
 @app.cell
-def __(mo, _CUDF_AVAILABLE, install_result):
+def __(mo, cudf_available, install_result):
     """Title and cuDF availability check"""
     mo.vstack([
         mo.md(
@@ -117,7 +115,7 @@ def __(mo, _CUDF_AVAILABLE, install_result):
             RAPIDS cuDF provides a pandas-like API that runs on NVIDIA GPUs, delivering
             **10-100x speedups** for common data manipulation operations.
             
-            **cuDF Status**: {'✅ Available' if _CUDF_AVAILABLE else '⚠️ Not installed - will show CPU-only results'}
+            **cuDF Status**: {'✅ Available' if cudf_available else '⚠️ Not installed - will show CPU-only results'}
             
             ## ⚙️ Benchmark Configuration
             """
@@ -128,7 +126,7 @@ def __(mo, _CUDF_AVAILABLE, install_result):
 
 
 @app.cell
-def __(mo, _CUDF_AVAILABLE):
+def __(mo, cudf_available):
     """Interactive benchmark controls"""
     dataset_size = mo.ui.slider(
         start=3, stop=7, step=1, value=5,
@@ -142,7 +140,7 @@ def __(mo, _CUDF_AVAILABLE):
     )
     
     # CPU/GPU mode toggle (only if cuDF available)
-    if _CUDF_AVAILABLE:
+    if cudf_available:
         mode_toggle = mo.ui.dropdown(
             options={'both': 'CPU vs GPU', 'cpu': 'CPU Only', 'gpu': 'GPU Only'},
             value='both',
@@ -161,7 +159,7 @@ def __(mo, _CUDF_AVAILABLE):
 
 
 @app.cell
-def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, _CUDF_AVAILABLE):
+def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, cudf_available):
     """Display benchmark controls"""
     mo.vstack([
         mo.hstack([dataset_size, operations], justify="start"),
@@ -171,11 +169,11 @@ def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, _CUDF_AVAIL
             mo.md(f"""
             **Mode**: {mode_toggle.value}
             
-            {'✅ cuDF available - you can compare CPU vs GPU!' if _CUDF_AVAILABLE else '⚠️ cuDF not installed - running CPU-only benchmarks'}
+            {'✅ cuDF available - you can compare CPU vs GPU!' if cudf_available else '⚠️ cuDF not installed - running CPU-only benchmarks'}
             
-            {'💡 Tip: Try "CPU vs GPU" mode to see the speedup!' if _CUDF_AVAILABLE else '💡 Restart the notebook after cuDF installs!'}
+            {'💡 Tip: Try "CPU vs GPU" mode to see the speedup!' if cudf_available else '💡 Restart the notebook after cuDF installs!'}
             """),
-            kind="info" if _CUDF_AVAILABLE else "warn"
+            kind="info" if cudf_available else "warn"
         )
     ])
     return
@@ -285,7 +283,7 @@ def __(mo, device, torch, gpu_memory_refresh, Optional, Dict):
 
 
 @app.cell
-def __(np, pd, cudf, time, _CUDF_AVAILABLE):
+def __(np, pd, cudf, time, cudf_available):
     """Benchmark functions"""
     
     def generate_data(n_rows: int) -> pd.DataFrame:
@@ -385,7 +383,7 @@ def __(np, pd, cudf, time, _CUDF_AVAILABLE):
 @app.cell
 def __(
     run_benchmark_btn, dataset_size, operations, mode_toggle, generate_data,
-    benchmark_functions, cudf, _CUDF_AVAILABLE, pd, mo, np, torch, device
+    benchmark_functions, cudf, cudf_available, pd, mo, np, torch, device
 ):
     """Run benchmarks"""
     
@@ -465,7 +463,7 @@ def __(
                         pandas_time, result_size = None, 0
                     
                     # cuDF benchmark (run if mode is 'gpu' or 'both' AND cuDF available)
-                    if _mode in ['gpu', 'both'] and _CUDF_AVAILABLE:
+                    if _mode in ['gpu', 'both'] and cudf_available:
                         cudf_df = cudf.from_pandas(pandas_df)
                         cudf_time, _ = bench_func(cudf_df, is_gpu=True)
                         speedup = pandas_time / cudf_time if pandas_time else None
@@ -487,7 +485,7 @@ def __(
                 }
                 
                 # Cleanup GPU memory
-                if _CUDF_AVAILABLE and device.type == "cuda":
+                if cudf_available and device.type == "cuda":
                     del cudf_df
                     torch.cuda.empty_cache()
                 
@@ -523,7 +521,7 @@ def __(
 
 
 @app.cell
-def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE, run_benchmark_btn):
+def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
     """Visualize benchmark results"""
     
     # Show status based on button clicks and results
@@ -575,7 +573,7 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE, run_benchmark_btn):
             table_data['Pandas Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['pandas_time']]
         
         # Add cuDF times if they were run
-        if _mode in ['gpu', 'both'] and _CUDF_AVAILABLE and any(_results['cudf_time']):
+        if _mode in ['gpu', 'both'] and cudf_available and any(_results['cudf_time']):
             table_data['cuDF Time (s)'] = [f"{t:.4f}" if t else "N/A" for t in _results['cudf_time']]
         
         # Add speedup if both were run
@@ -598,7 +596,7 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE, run_benchmark_btn):
             ))
         
         # Add cuDF if run
-        if _mode in ['gpu', 'both'] and _CUDF_AVAILABLE and any(_results['cudf_time']):
+        if _mode in ['gpu', 'both'] and cudf_available and any(_results['cudf_time']):
             cudf_times = [t if t else 0 for t in _results['cudf_time']]
             fig.add_trace(go.Bar(
                 name='cuDF (GPU)',
@@ -625,7 +623,7 @@ def __(benchmark_results, mo, pd, go, _CUDF_AVAILABLE, run_benchmark_btn):
         )
         
         # Show results
-        if _CUDF_AVAILABLE and _mode in ['both', 'gpu']:
+        if cudf_available and _mode in ['both', 'gpu']:
             # Speedup chart (only with cuDF)
             fig_speedup = go.Figure()
             
