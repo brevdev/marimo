@@ -782,7 +782,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                     - Dataset Size: **{_n_rows:,}** rows
                     - Operations Tested: **{len(_results['operation'])}**
                     - Total Time: **{sum(t for t in _results['pandas_time'] if t is not None):.2f}s**
-                    - Average Time per Operation: **{sum(t for t in _results['pandas_time'] if t is not None)/len([t for t in _results['pandas_time'] if t is not None]):.3f}s**
+                    - Average Time per Operation: **{(sum(t for t in _results['pandas_time'] if t is not None)/len([t for t in _results['pandas_time'] if t is not None])) if [t for t in _results['pandas_time'] if t is not None] else 0:.3f}s**
                     
                     💡 With cuDF (GPU), these operations could be **10-100x faster**!
                     """),
