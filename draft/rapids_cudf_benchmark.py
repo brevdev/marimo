@@ -320,22 +320,22 @@ def __(mo, device, torch, gpu_refresh, time):
         else:
             # Try to use GPUtil for rich metrics
             try:
-                import GPUtil
-                gpus = GPUtil.getGPUs()
+                import GPUtil as _GPUtil_metrics
+                _gpus_metrics = _GPUtil_metrics.getGPUs()
                 
                 # Create modern card-based display
                 gpu_cards_html = []
                 
-                for gpu in gpus:
-                    util_pct = round(gpu.load * 100, 1)
-                    mem_used_gb = gpu.memoryUsed / 1024
-                    mem_total_gb = gpu.memoryTotal / 1024
-                    mem_pct = round((gpu.memoryUsed / gpu.memoryTotal) * 100, 1)
-                    temp = gpu.temperature
+                for _gpu_metrics in _gpus_metrics:
+                    util_pct = round(_gpu_metrics.load * 100, 1)
+                    mem_used_gb = _gpu_metrics.memoryUsed / 1024
+                    mem_total_gb = _gpu_metrics.memoryTotal / 1024
+                    mem_pct = round((_gpu_metrics.memoryUsed / _gpu_metrics.memoryTotal) * 100, 1)
+                    temp = _gpu_metrics.temperature
                     
                     card_html = f"""
                     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU {gpu.id}: {gpu.name}</h4>
+                        <h4 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU {_gpu_metrics.id}: {_gpu_metrics.name}</h4>
                         
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
                             <!-- Utilization Card -->
@@ -601,11 +601,12 @@ def __(
                     'per_gpu': {}  # Track each GPU separately
                 }
                 
-                # Try to import GPUtil for GPU monitoring
+                # Try to import GPUtil for GPU monitoring (use unique name to avoid conflicts)
                 try:
-                    import GPUtil
+                    import GPUtil as _GPUtil_bench
                     _gputil_available = True
                 except ImportError:
+                    _GPUtil_bench = None
                     _gputil_available = False
                 
                 # Set which GPUs to use - all available GPUs
@@ -654,30 +655,30 @@ def __(
                             # Capture GPU metrics before operation (all GPUs)
                             if _gputil_available:
                                 try:
-                                    gpus = GPUtil.getGPUs()
-                                    for gpu in gpus:
-                                        if gpu.id in _gpu_ids:
+                                    _gpus_bench = _GPUtil_bench.getGPUs()
+                                    for _gpu_bench in _gpus_bench:
+                                        if _gpu_bench.id in _gpu_ids:
                                             # Track per-GPU metrics
-                                            if gpu.id not in _gpu_metrics['per_gpu']:
-                                                _gpu_metrics['per_gpu'][gpu.id] = {'peak_util': 0, 'peak_mem': 0}
+                                            if _gpu_bench.id not in _gpu_metrics['per_gpu']:
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
                                             
-                                            _gpu_metrics['per_gpu'][gpu.id]['peak_util'] = max(
-                                                _gpu_metrics['per_gpu'][gpu.id]['peak_util'], 
-                                                gpu.load * 100
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
+                                                _gpu_bench.load * 100
                                             )
-                                            _gpu_metrics['per_gpu'][gpu.id]['peak_mem'] = max(
-                                                _gpu_metrics['per_gpu'][gpu.id]['peak_mem'], 
-                                                gpu.memoryUsed
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
+                                                _gpu_bench.memoryUsed
                                             )
                                             
                                             # Track overall metrics
                                             _gpu_metrics['samples'].append({
-                                                'util': gpu.load * 100,
-                                                'mem': gpu.memoryUsed,
-                                                'gpu_id': gpu.id
+                                                'util': _gpu_bench.load * 100,
+                                                'mem': _gpu_bench.memoryUsed,
+                                                'gpu_id': _gpu_bench.id
                                             })
-                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
-                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
+                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
                                 except:
                                     pass
                             
@@ -686,30 +687,30 @@ def __(
                             # Capture GPU metrics after operation (all GPUs)
                             if _gputil_available:
                                 try:
-                                    gpus = GPUtil.getGPUs()
-                                    for gpu in gpus:
-                                        if gpu.id in _gpu_ids:
+                                    _gpus_bench = _GPUtil_bench.getGPUs()
+                                    for _gpu_bench in _gpus_bench:
+                                        if _gpu_bench.id in _gpu_ids:
                                             # Track per-GPU metrics
-                                            if gpu.id not in _gpu_metrics['per_gpu']:
-                                                _gpu_metrics['per_gpu'][gpu.id] = {'peak_util': 0, 'peak_mem': 0}
+                                            if _gpu_bench.id not in _gpu_metrics['per_gpu']:
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
                                             
-                                            _gpu_metrics['per_gpu'][gpu.id]['peak_util'] = max(
-                                                _gpu_metrics['per_gpu'][gpu.id]['peak_util'], 
-                                                gpu.load * 100
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
+                                                _gpu_bench.load * 100
                                             )
-                                            _gpu_metrics['per_gpu'][gpu.id]['peak_mem'] = max(
-                                                _gpu_metrics['per_gpu'][gpu.id]['peak_mem'], 
-                                                gpu.memoryUsed
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
+                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
+                                                _gpu_bench.memoryUsed
                                             )
                                             
                                             # Track overall metrics
                                             _gpu_metrics['samples'].append({
-                                                'util': gpu.load * 100,
-                                                'mem': gpu.memoryUsed,
-                                                'gpu_id': gpu.id
+                                                'util': _gpu_bench.load * 100,
+                                                'mem': _gpu_bench.memoryUsed,
+                                                'gpu_id': _gpu_bench.id
                                             })
-                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], gpu.load * 100)
-                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], gpu.memoryUsed)
+                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
+                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
                                 except:
                                     pass
                             
