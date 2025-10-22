@@ -601,8 +601,13 @@ def __(
                 'peak_memory_mb': 0,
                 'avg_utilization': 0,
                 'samples': [],
-                'per_gpu': {}  # Track each GPU separately
+                'per_gpu': {},  # Track each GPU separately
+                'timeline': []  # Track metrics over time with timestamps
             }
+            
+            # Record start time for timeline
+            import time as time_module
+            _benchmark_start_time = time_module.time()
             
             # Try to import GPUtil for GPU monitoring (use unique name to avoid conflicts)
             try:
@@ -641,6 +646,9 @@ def __(
                 bench_func = benchmark_functions[op]
                 print(f"\n🔄 Running {op}...")
                 
+                # Record operation start for timeline
+                _op_start_time = time_module.time()
+                
                 # Pandas benchmark (run if mode includes CPU)
                 if _run_cpu:
                     try:
@@ -659,6 +667,8 @@ def __(
                         if _gputil_available:
                             try:
                                 _gpus_bench = _GPUtil_bench.getGPUs()
+                                _elapsed = time_module.time() - _benchmark_start_time
+                                
                                 for _gpu_bench in _gpus_bench:
                                     if _gpu_bench.id in _gpu_ids:
                                         # Track per-GPU metrics
@@ -682,6 +692,17 @@ def __(
                                         })
                                         _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
                                         _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
+                                        
+                                        # Add to timeline for trend chart
+                                        _gpu_metrics['timeline'].append({
+                                            'timestamp': _elapsed,
+                                            'operation': op,
+                                            'phase': 'start',
+                                            'gpu_id': _gpu_bench.id,
+                                            'util': _gpu_bench.load * 100,
+                                            'mem_mb': _gpu_bench.memoryUsed,
+                                            'temp': _gpu_bench.temperature if hasattr(_gpu_bench, 'temperature') else None
+                                        })
                             except:
                                 pass
                         
@@ -691,6 +712,8 @@ def __(
                         if _gputil_available:
                             try:
                                 _gpus_bench = _GPUtil_bench.getGPUs()
+                                _elapsed = time_module.time() - _benchmark_start_time
+                                
                                 for _gpu_bench in _gpus_bench:
                                     if _gpu_bench.id in _gpu_ids:
                                         # Track per-GPU metrics
@@ -714,6 +737,17 @@ def __(
                                         })
                                         _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
                                         _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
+                                        
+                                        # Add to timeline for trend chart
+                                        _gpu_metrics['timeline'].append({
+                                            'timestamp': _elapsed,
+                                            'operation': op,
+                                            'phase': 'end',
+                                            'gpu_id': _gpu_bench.id,
+                                            'util': _gpu_bench.load * 100,
+                                            'mem_mb': _gpu_bench.memoryUsed,
+                                            'temp': _gpu_bench.temperature if hasattr(_gpu_bench, 'temperature') else None
+                                        })
                             except:
                                 pass
                         
@@ -962,6 +996,92 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                         gpu_data = _gm['per_gpu'][gpu_id]
                         _gpu_metrics_str += f"                    - GPU {gpu_id}: Peak {gpu_data['peak_util']:.1f}% util, {gpu_data['peak_mem']:.0f} MB\n"
             
+            # Create GPU timeline charts if we have timeline data
+            _gpu_timeline_charts = []
+            if benchmark_results.get('gpu_metrics', {}).get('timeline'):
+                _timeline = benchmark_results['gpu_metrics']['timeline']
+                
+                if _timeline:
+                    # GPU Utilization over time
+                    fig_gpu_util = go.Figure()
+                    for gpu_id in sorted(set(t['gpu_id'] for t in _timeline)):
+                        gpu_data = [t for t in _timeline if t['gpu_id'] == gpu_id]
+                        fig_gpu_util.add_trace(go.Scatter(
+                            x=[t['timestamp'] for t in gpu_data],
+                            y=[t['util'] for t in gpu_data],
+                            mode='lines+markers',
+                            name=f'GPU {gpu_id}',
+                            line=dict(width=2),
+                            marker=dict(size=6)
+                        ))
+                    
+                    fig_gpu_util.update_layout(
+                        title="GPU Utilization Over Time",
+                        xaxis_title="Time (seconds)",
+                        yaxis_title="GPU Utilization (%)",
+                        yaxis_range=[0, 105],
+                        height=350,
+                        margin=dict(t=60, b=60, l=60, r=40),
+                        hovermode='x unified',
+                        showlegend=True
+                    )
+                    
+                    # GPU Memory over time
+                    fig_gpu_mem = go.Figure()
+                    for gpu_id in sorted(set(t['gpu_id'] for t in _timeline)):
+                        gpu_data = [t for t in _timeline if t['gpu_id'] == gpu_id]
+                        fig_gpu_mem.add_trace(go.Scatter(
+                            x=[t['timestamp'] for t in gpu_data],
+                            y=[t['mem_mb'] for t in gpu_data],
+                            mode='lines+markers',
+                            name=f'GPU {gpu_id}',
+                            line=dict(width=2),
+                            marker=dict(size=6)
+                        ))
+                    
+                    fig_gpu_mem.update_layout(
+                        title="GPU Memory Usage Over Time",
+                        xaxis_title="Time (seconds)",
+                        yaxis_title="GPU Memory (MB)",
+                        height=350,
+                        margin=dict(t=60, b=60, l=60, r=40),
+                        hovermode='x unified',
+                        showlegend=True
+                    )
+                    
+                    _gpu_timeline_charts.extend([
+                        mo.md("### 📈 GPU Performance Timeline"),
+                        mo.ui.plotly(fig_gpu_util),
+                        mo.ui.plotly(fig_gpu_mem)
+                    ])
+                    
+                    # Add temperature chart if available
+                    if any(t.get('temp') is not None for t in _timeline):
+                        fig_gpu_temp = go.Figure()
+                        for gpu_id in sorted(set(t['gpu_id'] for t in _timeline)):
+                            gpu_data = [t for t in _timeline if t['gpu_id'] == gpu_id and t.get('temp') is not None]
+                            if gpu_data:
+                                fig_gpu_temp.add_trace(go.Scatter(
+                                    x=[t['timestamp'] for t in gpu_data],
+                                    y=[t['temp'] for t in gpu_data],
+                                    mode='lines+markers',
+                                    name=f'GPU {gpu_id}',
+                                    line=dict(width=2),
+                                    marker=dict(size=6)
+                                ))
+                        
+                        fig_gpu_temp.update_layout(
+                            title="GPU Temperature Over Time",
+                            xaxis_title="Time (seconds)",
+                            yaxis_title="Temperature (°C)",
+                            height=350,
+                            margin=dict(t=60, b=60, l=60, r=40),
+                            hovermode='x unified',
+                            showlegend=True
+                        )
+                        
+                        _gpu_timeline_charts.append(mo.ui.plotly(fig_gpu_temp))
+            
             _output = mo.vstack([
                 mo.md("### ✅ Benchmark Complete!"),
                 mo.ui.table(table_data, label="Performance Results"),
@@ -969,6 +1089,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 mo.ui.plotly(fig),
                 mo.md("### ⚡ Speedup Analysis"),
                 mo.ui.plotly(fig_speedup),
+                *_gpu_timeline_charts,  # Add GPU timeline charts here
                 mo.callout(
                     mo.md(f"""
                     **Performance Summary**:
