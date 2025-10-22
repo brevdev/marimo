@@ -111,7 +111,7 @@ def __(mo):
 
 
 @app.cell
-def __(torch, mo, subprocess):
+def __(torch, mo, subprocess, Dict):
     """GPU Detection and Validation"""
     
     def get_gpu_info() -> Dict:
@@ -177,8 +177,18 @@ def __(torch, mo, subprocess):
 
 
 @app.cell
-def __(mo, device, torch):
+def __(mo):
     """GPU Memory Monitor - Auto-refreshing"""
+    gpu_memory_refresh = mo.ui.refresh(default_interval="2s")
+    gpu_memory_refresh
+    return gpu_memory_refresh,
+
+
+@app.cell
+def __(mo, device, torch, gpu_memory_refresh, Optional, Dict):
+    """GPU Memory Display"""
+    # Trigger refresh
+    _refresh_trigger = gpu_memory_refresh.value
     
     def get_gpu_memory() -> Optional[Dict]:
         """Get current GPU memory usage"""
@@ -194,21 +204,17 @@ def __(mo, device, torch):
             }
         return None
     
-    gpu_memory = mo.ui.refresh(
-        component=lambda: get_gpu_memory(),
-        options=[2, 5, 10],
-        default_interval=2
-    )
+    gpu_memory_data = get_gpu_memory()
     
     mo.vstack([
         mo.md("### 📊 GPU Memory Usage"),
-        gpu_memory if gpu_memory.value else mo.md("*CPU mode - no GPU memory tracking*")
+        mo.ui.table(gpu_memory_data) if gpu_memory_data else mo.md("*CPU mode - no GPU memory tracking*")
     ])
-    return get_gpu_memory, gpu_memory
+    return get_gpu_memory, gpu_memory_data
 
 
 @app.cell
-def __(Dataset, torch, List, Tuple):
+def __(Dataset, torch, List, Tuple, Dict):
     """Dataset preparation"""
     
     class FineTuningDataset(Dataset):
@@ -255,7 +261,7 @@ def __(Dataset, torch, List, Tuple):
 
 
 @app.cell
-def __(nn, torch):
+def __(nn, torch, Tuple):
     """LoRA implementation"""
     
     class LoRALayer(nn.Module):
