@@ -139,21 +139,39 @@ def __(torch, mo, subprocess):
     
     gpu_info = get_gpu_info()
     
-    if gpu_info['available']:
-        mo.callout(
-            mo.vstack([
-                mo.md("**✅ GPU Detected**"),
-                mo.ui.table(gpu_info['gpus'])
-            ]),
-            kind="success"
-        )
-    else:
-        mo.callout(
-            mo.md(f"⚠️ **No GPU detected**: {gpu_info.get('error', 'Unknown error')}"),
-            kind="warn"
+    # Stop execution if no GPU available
+    if not gpu_info['available']:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires an NVIDIA GPU for LLM fine-tuning.
+                
+                **Error**: {gpu_info.get('error', 'Unknown error')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: CPU training is too slow for LLMs - GPU is required.
+                """),
+                kind="danger"
+            )
         )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Display GPU info
+    mo.callout(
+        mo.vstack([
+            mo.md("**✅ GPU Detected**"),
+            mo.ui.table(gpu_info['gpus'])
+        ]),
+        kind="success"
+    )
+    
+    device = torch.device("cuda")
     
     return get_gpu_info, gpu_info, device
 
@@ -257,7 +275,7 @@ def __(nn, torch):
             """Forward pass: x @ A @ B"""
             return (x @ self.lora_A @ self.lora_B) * self.scaling
     
-    def inject_lora(model: nn.Module, rank: int = 16) -> nn.Module:
+    def inject_lora(model: nn.Module, rank: int = 16) -> Tuple[nn.Module, int]:
         """Inject LoRA layers into model attention layers"""
         lora_params = 0
         
@@ -266,10 +284,25 @@ def __(nn, torch):
                 in_features = module.in_features
                 out_features = module.out_features
                 
-                # Add LoRA as parallel path
+                # Add LoRA layer
                 lora_layer = LoRALayer(in_features, out_features, rank=rank)
-                setattr(module, '_lora', lora_layer)
+                module._lora = lora_layer
                 lora_params += rank * (in_features + out_features)
+                
+                # Store original forward method
+                original_forward = module.forward
+                
+                # Monkey-patch forward to include LoRA
+                def make_forward_with_lora(orig_forward, lora):
+                    def forward_with_lora(x):
+                        # Base output from frozen weights
+                        base_out = orig_forward(x)
+                        # LoRA adaptation
+                        lora_out = lora(x)
+                        return base_out + lora_out
+                    return forward_with_lora
+                
+                module.forward = make_forward_with_lora(original_forward, lora_layer)
                 
                 # Freeze original weights
                 module.weight.requires_grad = False
@@ -304,111 +337,147 @@ def __(
     training_results = None
     
     if train_button.value:
-        mo.md("### 🔄 Training in Progress...")
+        # Set random seeds for reproducibility
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        np.random.seed(42)
         
-        try:
-            # Initialize model and tokenizer (using small GPT-2 for demo)
-            model_name = "gpt2"
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            tokenizer.pad_token = tokenizer.eos_token
-            
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
-            ).to(device)
-            
-            # Inject LoRA
-            model, lora_params = inject_lora(model, rank=lora_rank.value)
-            total_params = sum(p.numel() for p in model.parameters())
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            
-            # Prepare dataset
-            dataset = FineTuningDataset(tokenizer, num_samples=200)
-            dataloader = DataLoader(
-                dataset,
-                batch_size=batch_size.value,
-                shuffle=True
-            )
-            
-            # Setup optimizer
-            optimizer = torch.optim.AdamW(
-                filter(lambda p: p.requires_grad, model.parameters()),
-                lr=learning_rate.value
-            )
-            
-            # Training loop
-            model.train()
-            losses = []
-            times = []
-            start_time = time.time()
-            
-            for epoch in range(num_epochs.value):
-                epoch_losses = []
+        with mo.status.spinner(
+            title="🔄 Training LLM with LoRA...",
+            subtitle=f"Epochs: {num_epochs.value}, Batch: {batch_size.value}, Rank: {lora_rank.value}"
+        ):
+            try:
+                # Initialize model and tokenizer (using small GPT-2 for demo)
+                model_name = "gpt2"
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                tokenizer.pad_token = tokenizer.eos_token
                 
-                for batch_idx, batch in enumerate(dataloader):
-                    input_ids = batch['input_ids'].to(device)
-                    attention_mask = batch['attention_mask'].to(device)
-                    labels = batch['labels'].to(device)
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
+                ).to(device)
+                
+                # Inject LoRA
+                model, lora_params = inject_lora(model, rank=lora_rank.value)
+                total_params = sum(p.numel() for p in model.parameters())
+                trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+                
+                # Prepare dataset
+                dataset = FineTuningDataset(tokenizer, num_samples=200)
+                dataloader = DataLoader(
+                    dataset,
+                    batch_size=batch_size.value,
+                    shuffle=True
+                )
+                
+                # Setup optimizer
+                optimizer = torch.optim.AdamW(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=learning_rate.value
+                )
+                
+                # Training loop
+                model.train()
+                losses = []
+                times = []
+                start_time = time.time()
+                
+                for epoch in range(num_epochs.value):
+                    epoch_losses = []
                     
-                    # Forward pass
-                    if use_mixed_precision.value and device.type == "cuda":
-                        with torch.cuda.amp.autocast():
+                    for batch_idx, batch in enumerate(dataloader):
+                        input_ids = batch['input_ids'].to(device)
+                        attention_mask = batch['attention_mask'].to(device)
+                        labels = batch['labels'].to(device)
+                        
+                        # Forward pass
+                        if use_mixed_precision.value and device.type == "cuda":
+                            with torch.cuda.amp.autocast():
+                                outputs = model(
+                                    input_ids=input_ids,
+                                    attention_mask=attention_mask,
+                                    labels=labels
+                                )
+                                loss = outputs.loss
+                        else:
                             outputs = model(
                                 input_ids=input_ids,
                                 attention_mask=attention_mask,
                                 labels=labels
                             )
                             loss = outputs.loss
-                    else:
-                        outputs = model(
-                            input_ids=input_ids,
-                            attention_mask=attention_mask,
-                            labels=labels
-                        )
-                        loss = outputs.loss
-                    
-                    # Backward pass
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    
-                    # Track metrics
-                    epoch_losses.append(loss.item())
-                    losses.append(loss.item())
-                    times.append(time.time() - start_time)
-                    
-                    if batch_idx % 10 == 0:
-                        print(f"Epoch {epoch+1}/{num_epochs.value}, Batch {batch_idx}, Loss: {loss.item():.4f}")
+                        
+                        # Backward pass
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        
+                        # Track metrics
+                        epoch_losses.append(loss.item())
+                        losses.append(loss.item())
+                        times.append(time.time() - start_time)
+                        
+                        if batch_idx % 10 == 0:
+                            print(f"Epoch {epoch+1}/{num_epochs.value}, Batch {batch_idx}, Loss: {loss.item():.4f}")
+                
+                total_time = time.time() - start_time
+                
+                # Generate sample output
+                model.eval()
+                with torch.no_grad():
+                    prompt = "Translate English to French: Hello"
+                    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+                    outputs = model.generate(
+                        **inputs,
+                        max_length=50,
+                        num_return_sequences=1,
+                        temperature=0.7
+                    )
+                    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
             
-            total_time = time.time() - start_time
-            
-            # Generate sample output
-            model.eval()
-            with torch.no_grad():
-                prompt = "Translate English to French: Hello"
-                inputs = tokenizer(prompt, return_tensors="pt").to(device)
-                outputs = model.generate(
-                    **inputs,
-                    max_length=50,
-                    num_return_sequences=1,
-                    temperature=0.7
-                )
-                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            training_results = {
-                'losses': losses,
-                'times': times,
-                'total_time': total_time,
-                'total_params': total_params,
-                'trainable_params': trainable_params,
-                'lora_params': lora_params,
-                'final_loss': losses[-1],
-                'avg_loss': np.mean(losses[-10:]),
-                'generated_sample': generated_text
-            }
-            
-        except Exception as e:
-            training_results = {'error': str(e)}
+                training_results = {
+                    'losses': losses,
+                    'times': times,
+                    'total_time': total_time,
+                    'total_params': total_params,
+                    'trainable_params': trainable_params,
+                    'lora_params': lora_params,
+                    'final_loss': losses[-1],
+                    'avg_loss': np.mean(losses[-10:]),
+                    'generated_sample': generated_text
+                }
+                
+                # Cleanup GPU memory
+                del model
+                torch.cuda.empty_cache()
+                
+            except torch.cuda.OutOfMemoryError:
+                # Handle GPU OOM explicitly
+                torch.cuda.empty_cache()
+                training_results = {
+                    'error': 'GPU Out of Memory',
+                    'suggestion': f"""
+**GPU ran out of memory!**
+
+**Current settings**:
+- Batch size: {batch_size.value}
+- LoRA rank: {lora_rank.value}
+- Precision: {'FP16' if use_mixed_precision.value else 'FP32'}
+
+**Try these solutions**:
+1. Reduce batch size (try {max(1, batch_size.value // 2)})
+2. Reduce LoRA rank (try {max(4, lora_rank.value // 2)})
+3. Enable mixed precision if disabled
+4. Close other GPU applications
+
+**GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
+                    """
+                }
+            except Exception as e:
+                training_results = {
+                    'error': str(e),
+                    'error_type': type(e).__name__
+                }
     
     return training_results, train_button
 
@@ -423,8 +492,14 @@ def __(training_results, mo, go, pd):
             kind="info"
         )
     elif 'error' in training_results:
+        error_msg = f"**Training Error**: {training_results['error']}"
+        if 'suggestion' in training_results:
+            error_msg += f"\n\n{training_results['suggestion']}"
+        if 'error_type' in training_results:
+            error_msg += f"\n\n*Error type: {training_results['error_type']}*"
+        
         mo.callout(
-            mo.md(f"**Training Error**: {training_results['error']}"),
+            mo.md(error_msg),
             kind="danger"
         )
     else:
