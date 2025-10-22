@@ -46,6 +46,8 @@ def __():
     import time
     import subprocess
     import torch
+    import threading
+    from queue import Queue
     
     # Try importing cuDF
     try:
@@ -70,7 +72,8 @@ def __():
     return (
         mo, np, pd, go, px, Dict, List, Tuple, Optional,
         time, subprocess, torch, cudf, CUDF_AVAILABLE,
-        dask_cudf, LocalCUDACluster, Client, DASK_CUDF_AVAILABLE
+        dask_cudf, LocalCUDACluster, Client, DASK_CUDF_AVAILABLE,
+        threading, Queue
     )
 
 
@@ -537,222 +540,222 @@ def __(
     
     # Check if button was clicked (value increments on each click)
     if run_benchmark_btn.value > 0:
-        print(f"✅ DEBUG: Button clicked! Running benchmark with {len(operations.value)} operations")
+        print(f"🚀 Starting benchmark with {len(operations.value)} operations on {10**dataset_size.value:,} rows...")
+        print(f"Operations: {', '.join(operations.value)}")
+        print(f"Mode: {mode_toggle.value}")
+        print("=" * 60)
+        
         # Set random seeds for reproducibility
         np.random.seed(42)
         torch.manual_seed(42)
         
-        with mo.status.spinner(
-            title="🔄 Running RAPIDS cuDF Benchmarks...",
-            subtitle=f"Operations: {', '.join(operations.value)}, Dataset: {10**dataset_size.value:,} rows"
-        ):
-            try:
-                # Check GPU memory and adjust dataset size if needed
-                if device.type == "cuda":
-                    gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                    requested_rows = 10 ** dataset_size.value
-                    
-                    # Estimate memory: ~50 bytes per row (conservative)
-                    estimated_gb = (requested_rows * 50) / 1024**3
-                    
-                    if estimated_gb > gpu_mem_gb * 0.7:  # Don't use more than 70% of GPU memory
-                        # Scale down to safe size
-                        safe_rows = int((gpu_mem_gb * 0.7 * 1024**3) / 50)
-                        _n_rows = min(requested_rows, safe_rows)
-                        if _n_rows < requested_rows:
-                            mo.callout(
-                                mo.md(f"""
-                                ⚠️ **Memory Scaling Applied**
-                                
-                                Requested: {requested_rows:,} rows ({estimated_gb:.1f} GB est.)
-                                Adjusted to: {_n_rows:,} rows (safe for {gpu_mem_gb:.1f} GB GPU)
-                                """),
-                                kind="warn"
-                            )
-                    else:
-                        _n_rows = requested_rows
+        try:
+        # Check GPU memory and adjust dataset size if needed
+        if device.type == "cuda":
+                gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                requested_rows = 10 ** dataset_size.value
+                
+                # Estimate memory: ~50 bytes per row (conservative)
+                estimated_gb = (requested_rows * 50) / 1024**3
+                
+                if estimated_gb > gpu_mem_gb * 0.7:  # Don't use more than 70% of GPU memory
+                    # Scale down to safe size
+                    safe_rows = int((gpu_mem_gb * 0.7 * 1024**3) / 50)
+                    _n_rows = min(requested_rows, safe_rows)
+                    if _n_rows < requested_rows:
+                        mo.callout(
+                            mo.md(f"""
+                            ⚠️ **Memory Scaling Applied**
+                            
+                            Requested: {requested_rows:,} rows ({estimated_gb:.1f} GB est.)
+                            Adjusted to: {_n_rows:,} rows (safe for {gpu_mem_gb:.1f} GB GPU)
+                            """),
+                            kind="warn"
+                        )
                 else:
-                    _n_rows = 10 ** dataset_size.value
-                
-                # Generate data
-                pandas_df = generate_data(_n_rows)
-                
-                _results = {
-                    'operation': [],
-                    'pandas_time': [],
-                    'cudf_time': [],
-                    'speedup': [],
-                    'result_size': []
-                }
-                
-                # Run benchmarks for each operation based on mode
-                _mode = mode_toggle.value
-                
-                # Normalize mode - dropdown returns labels, not keys
-                _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
-                _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
-                
-                # Initialize GPU monitoring (for all GPUs)
-                _gpu_metrics = {
-                    'peak_utilization': 0,
-                    'peak_memory_mb': 0,
-                    'avg_utilization': 0,
-                    'samples': [],
-                    'per_gpu': {}  # Track each GPU separately
-                }
-                
-                # Try to import GPUtil for GPU monitoring (use unique name to avoid conflicts)
+                    _n_rows = requested_rows
+            else:
+                _n_rows = 10 ** dataset_size.value
+            
+            # Generate data
+            pandas_df = generate_data(_n_rows)
+            
+            _results = {
+                'operation': [],
+                'pandas_time': [],
+                'cudf_time': [],
+                'speedup': [],
+                'result_size': []
+            }
+            
+            # Run benchmarks for each operation based on mode
+            _mode = mode_toggle.value
+            
+            # Normalize mode - dropdown returns labels, not keys
+            _run_cpu = _mode in ['CPU Only', 'CPU vs GPU', 'cpu', 'both']
+            _run_gpu = _mode in ['GPU Only', 'CPU vs GPU', 'gpu', 'both']
+            
+            # Initialize GPU monitoring (for all GPUs)
+            _gpu_metrics = {
+                'peak_utilization': 0,
+                'peak_memory_mb': 0,
+                'avg_utilization': 0,
+                'samples': [],
+                'per_gpu': {}  # Track each GPU separately
+            }
+            
+            # Try to import GPUtil for GPU monitoring (use unique name to avoid conflicts)
+            try:
+                import GPUtil as _GPUtil_bench
+                _gputil_available = True
+            except ImportError:
+                _GPUtil_bench = None
+                _gputil_available = False
+            
+            # Set which GPUs to use - all available GPUs
+            _gpu_ids = list(range(num_gpus)) if num_gpus > 0 else [0]
+            print(f"💻 Using {len(_gpu_ids)} GPU(s): {_gpu_ids}")
+            
+            # Convert pandas DataFrame to cuDF once if needed
+            _cudf_df = None
+            
+            if _run_gpu and cudf_available and cudf_module is not None:
                 try:
-                    import GPUtil as _GPUtil_bench
-                    _gputil_available = True
-                except ImportError:
-                    _GPUtil_bench = None
-                    _gputil_available = False
+                    _cudf_df = cudf_module.from_pandas(pandas_df)
+                    print(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
+                    
+                    # GPU warmup - run a simple operation to initialize GPU
+                    # This eliminates first-run overhead from benchmarks
+                    _ = _cudf_df[_cudf_df['value'] > 0]
+                    print("✅ GPU initialized")
+                except Exception as e:
+                    print(f"❌ Failed to create cuDF DataFrame: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    _cudf_df = None
+            
+            for op in operations.value:
+                if op not in benchmark_functions:
+                    continue
                 
-                # Set which GPUs to use - all available GPUs
-                _gpu_ids = list(range(num_gpus)) if num_gpus > 0 else [0]
-                print(f"💻 Using {len(_gpu_ids)} GPU(s): {_gpu_ids}")
+                bench_func = benchmark_functions[op]
+                print(f"\n🔄 Running {op}...")
                 
-                # Convert pandas DataFrame to cuDF once if needed
-                _cudf_df = None
-                
-                if _run_gpu and cudf_available and cudf_module is not None:
+                # Pandas benchmark (run if mode includes CPU)
+                if _run_cpu:
                     try:
-                        _cudf_df = cudf_module.from_pandas(pandas_df)
-                        print(f"✅ Created cuDF DataFrame: {len(_cudf_df):,} rows")
-                        
-                        # GPU warmup - run a simple operation to initialize GPU
-                        # This eliminates first-run overhead from benchmarks
-                        _ = _cudf_df[_cudf_df['value'] > 0]
-                        print("✅ GPU initialized")
+                        pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
+                        print(f"  ✅ Pandas: {pandas_time:.4f}s ({result_size:,} rows)")
                     except Exception as e:
-                        print(f"❌ Failed to create cuDF DataFrame: {e}")
+                        print(f"  ❌ Pandas failed: {e}")
+                        pandas_time, result_size = None, 0
+                else:
+                    pandas_time, result_size = None, 0
+                
+                # cuDF benchmark (run if mode includes GPU AND cuDF available)
+                if _run_gpu and _cudf_df is not None:
+                    try:
+                        # Capture GPU metrics before operation (all GPUs)
+                        if _gputil_available:
+                            try:
+                                _gpus_bench = _GPUtil_bench.getGPUs()
+                                for _gpu_bench in _gpus_bench:
+                                    if _gpu_bench.id in _gpu_ids:
+                                        # Track per-GPU metrics
+                                        if _gpu_bench.id not in _gpu_metrics['per_gpu']:
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
+                                        
+                                        _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
+                                            _gpu_bench.load * 100
+                                        )
+                                        _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
+                                            _gpu_bench.memoryUsed
+                                        )
+                                        
+                                        # Track overall metrics
+                                        _gpu_metrics['samples'].append({
+                                            'util': _gpu_bench.load * 100,
+                                            'mem': _gpu_bench.memoryUsed,
+                                            'gpu_id': _gpu_bench.id
+                                        })
+                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
+                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
+                            except:
+                                pass
+                        
+                        cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
+                        
+                        # Capture GPU metrics after operation (all GPUs)
+                        if _gputil_available:
+                            try:
+                                _gpus_bench = _GPUtil_bench.getGPUs()
+                                for _gpu_bench in _gpus_bench:
+                                    if _gpu_bench.id in _gpu_ids:
+                                        # Track per-GPU metrics
+                                        if _gpu_bench.id not in _gpu_metrics['per_gpu']:
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
+                                        
+                                        _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
+                                            _gpu_bench.load * 100
+                                        )
+                                        _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
+                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
+                                            _gpu_bench.memoryUsed
+                                        )
+                                        
+                                        # Track overall metrics
+                                        _gpu_metrics['samples'].append({
+                                            'util': _gpu_bench.load * 100,
+                                            'mem': _gpu_bench.memoryUsed,
+                                            'gpu_id': _gpu_bench.id
+                                        })
+                                        _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
+                                        _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
+                            except:
+                                pass
+                        
+                        speedup = pandas_time / cudf_time if (pandas_time and cudf_time) else None
+                        print(f"  ✅ cuDF: {cudf_time:.4f}s (speedup: {speedup:.1f}x)" if speedup else f"  ✅ cuDF: {cudf_time:.4f}s")
+                    except Exception as e:
+                        print(f"  ❌ cuDF failed: {e}")
                         import traceback
                         traceback.print_exc()
-                        _cudf_df = None
-                
-                for op in operations.value:
-                    if op not in benchmark_functions:
-                        continue
-                    
-                    bench_func = benchmark_functions[op]
-                    print(f"\n🔄 Running {op}...")
-                    
-                    # Pandas benchmark (run if mode includes CPU)
-                    if _run_cpu:
-                        try:
-                            pandas_time, result_size = bench_func(pandas_df.copy(), is_gpu=False)
-                            print(f"  ✅ Pandas: {pandas_time:.4f}s ({result_size:,} rows)")
-                        except Exception as e:
-                            print(f"  ❌ Pandas failed: {e}")
-                            pandas_time, result_size = None, 0
-                    else:
-                        pandas_time, result_size = None, 0
-                    
-                    # cuDF benchmark (run if mode includes GPU AND cuDF available)
-                    if _run_gpu and _cudf_df is not None:
-                        try:
-                            # Capture GPU metrics before operation (all GPUs)
-                            if _gputil_available:
-                                try:
-                                    _gpus_bench = _GPUtil_bench.getGPUs()
-                                    for _gpu_bench in _gpus_bench:
-                                        if _gpu_bench.id in _gpu_ids:
-                                            # Track per-GPU metrics
-                                            if _gpu_bench.id not in _gpu_metrics['per_gpu']:
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
-                                            
-                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
-                                                _gpu_bench.load * 100
-                                            )
-                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
-                                                _gpu_bench.memoryUsed
-                                            )
-                                            
-                                            # Track overall metrics
-                                            _gpu_metrics['samples'].append({
-                                                'util': _gpu_bench.load * 100,
-                                                'mem': _gpu_bench.memoryUsed,
-                                                'gpu_id': _gpu_bench.id
-                                            })
-                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
-                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
-                                except:
-                                    pass
-                            
-                            cudf_time, _ = bench_func(_cudf_df, is_gpu=True)
-                            
-                            # Capture GPU metrics after operation (all GPUs)
-                            if _gputil_available:
-                                try:
-                                    _gpus_bench = _GPUtil_bench.getGPUs()
-                                    for _gpu_bench in _gpus_bench:
-                                        if _gpu_bench.id in _gpu_ids:
-                                            # Track per-GPU metrics
-                                            if _gpu_bench.id not in _gpu_metrics['per_gpu']:
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id] = {'peak_util': 0, 'peak_mem': 0}
-                                            
-                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'] = max(
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_util'], 
-                                                _gpu_bench.load * 100
-                                            )
-                                            _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'] = max(
-                                                _gpu_metrics['per_gpu'][_gpu_bench.id]['peak_mem'], 
-                                                _gpu_bench.memoryUsed
-                                            )
-                                            
-                                            # Track overall metrics
-                                            _gpu_metrics['samples'].append({
-                                                'util': _gpu_bench.load * 100,
-                                                'mem': _gpu_bench.memoryUsed,
-                                                'gpu_id': _gpu_bench.id
-                                            })
-                                            _gpu_metrics['peak_utilization'] = max(_gpu_metrics['peak_utilization'], _gpu_bench.load * 100)
-                                            _gpu_metrics['peak_memory_mb'] = max(_gpu_metrics['peak_memory_mb'], _gpu_bench.memoryUsed)
-                                except:
-                                    pass
-                            
-                            speedup = pandas_time / cudf_time if (pandas_time and cudf_time) else None
-                            print(f"  ✅ cuDF: {cudf_time:.4f}s (speedup: {speedup:.1f}x)" if speedup else f"  ✅ cuDF: {cudf_time:.4f}s")
-                        except Exception as e:
-                            print(f"  ❌ cuDF failed: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            cudf_time = None
-                            speedup = None
-                    else:
                         cudf_time = None
                         speedup = None
-                    
-                    _results['operation'].append(op.capitalize())
-                    _results['pandas_time'].append(pandas_time)
-                    _results['cudf_time'].append(cudf_time)
-                    _results['speedup'].append(speedup)
-                    _results['result_size'].append(result_size)
+                else:
+                    cudf_time = None
+                    speedup = None
                 
-                # Calculate average GPU utilization
-                if _gpu_metrics['samples']:
-                    _gpu_metrics['avg_utilization'] = sum(s['util'] for s in _gpu_metrics['samples']) / len(_gpu_metrics['samples'])
-                
-                benchmark_results = {
-                    'results': _results,
-                    'n_rows': _n_rows,
-                    'mode': _mode,
-                    'success': True,
-                    'gpu_metrics': _gpu_metrics if _run_gpu and _gpu_metrics['samples'] else None
-                }
-                
-                # Cleanup GPU memory
-                if _cudf_df is not None:
-                    try:
-                        del _cudf_df
-                        torch.cuda.empty_cache()
-                        print("✅ Cleaned up GPU memory")
-                    except Exception as e:
-                        print(f"⚠️  GPU cleanup warning: {e}")
-                
+                _results['operation'].append(op.capitalize())
+                _results['pandas_time'].append(pandas_time)
+                _results['cudf_time'].append(cudf_time)
+                _results['speedup'].append(speedup)
+                _results['result_size'].append(result_size)
+            
+            # Calculate average GPU utilization
+            if _gpu_metrics['samples']:
+                _gpu_metrics['avg_utilization'] = sum(s['util'] for s in _gpu_metrics['samples']) / len(_gpu_metrics['samples'])
+            
+            benchmark_results = {
+                'results': _results,
+                'n_rows': _n_rows,
+                'mode': _mode,
+                'success': True,
+                'gpu_metrics': _gpu_metrics if _run_gpu and _gpu_metrics['samples'] else None
+            }
+            
+            # Cleanup GPU memory
+            if _cudf_df is not None:
+                try:
+                    del _cudf_df
+                    torch.cuda.empty_cache()
+                    print("✅ Cleaned up GPU memory")
+                except Exception as e:
+                    print(f"⚠️  GPU cleanup warning: {e}")
+            
             except torch.cuda.OutOfMemoryError:
                 # Handle GPU OOM explicitly
                 torch.cuda.empty_cache()
