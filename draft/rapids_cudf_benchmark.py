@@ -65,7 +65,7 @@ def __(mo, CUDF_AVAILABLE, subprocess):
     
     # Initialize these at cell level to ensure they're always defined
     _CUDF_AVAILABLE = CUDF_AVAILABLE
-    install_result = mo.md("")
+    _install_result = mo.md("")
     
     if not CUDF_AVAILABLE:
         with mo.status.spinner(title="Installing cuDF for GPU acceleration...", subtitle="This takes 2-3 minutes"):
@@ -78,7 +78,7 @@ def __(mo, CUDF_AVAILABLE, subprocess):
                 )
                 
                 if result.returncode == 0:
-                    install_result = mo.callout(
+                    _install_result = mo.callout(
                         mo.md("✅ **cuDF installed!** Restart the notebook to activate GPU acceleration."),
                         kind="success"
                     )
@@ -89,17 +89,19 @@ def __(mo, CUDF_AVAILABLE, subprocess):
                     except ImportError:
                         _CUDF_AVAILABLE = False
                 else:
-                    install_result = mo.callout(
+                    _install_result = mo.callout(
                         mo.md(f"⚠️ **Could not auto-install cuDF**. Install manually:\n```bash\npip install cudf-cu12 --extra-index-url=https://pypi.nvidia.com\n```"),
                         kind="warn"
                     )
             except Exception as e:
-                install_result = mo.callout(
+                _install_result = mo.callout(
                     mo.md(f"⚠️ **Install skipped**: {str(e)[:100]}. Running CPU-only mode."),
                     kind="warn"
                 )
     
-    return install_result, _CUDF_AVAILABLE
+    # CRITICAL: Use explicit variable names in return tuple
+    install_result = _install_result
+    return _CUDF_AVAILABLE, install_result
 
 
 @app.cell
