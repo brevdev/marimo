@@ -1222,6 +1222,8 @@ def __(training_results, mo, go, pd, np):
             mo.md("---"),
             
             mo.md("## 📈 Training Progress"),
+            
+            # Loss and Parameters side-by-side
             mo.hstack([
                 mo.vstack([
                     mo.ui.plotly(fig_loss),
@@ -1231,14 +1233,23 @@ def __(training_results, mo, go, pd, np):
                 ], align="start") if fig_params else mo.md("")
             ], justify="space-around"),
             
-            mo.hstack([
-                mo.ui.plotly(fig_epochs) if fig_epochs else mo.md(""),
-                mo.ui.plotly(fig_memory) if fig_memory else mo.md("")
-            ], justify="space-around"),
+            # Epoch stats and GPU memory stacked vertically (full width)
+            mo.ui.plotly(fig_epochs) if fig_epochs else mo.md(""),
+            mo.ui.plotly(fig_memory) if fig_memory else mo.md(""),
             
             mo.md("---"),
             mo.md("## 💬 Sample Text Generation"),
-            mo.md("See how the fine-tuned model responds to different prompts:"),
+            mo.callout(
+                mo.md("""
+**⚠️ Note**: The sample outputs below may look strange because this demo uses **dummy training data** 
+(generic "Sample text 1, 2, 3..."). The model learned to reproduce that pattern, not actual 
+translation/summarization tasks.
+
+For real applications, replace `FineTuningDataset` with your actual task-specific data 
+(translation pairs, summarization examples, Q&A pairs, etc.).
+                """),
+                kind="warn"
+            ),
             mo.vstack(samples_display),
             
             mo.md("---"),
