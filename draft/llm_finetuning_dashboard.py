@@ -1002,10 +1002,11 @@ def __(train_button, training_losses, training_times, total_training_time, total
 
 
 @app.cell
-def __(train_button, training_results, mo, go, pd, np):
+def __(training_results, mo, go, pd, np):
     """Visualize training results"""
     
-    mo.stop(not train_button.value)
+    # This cell automatically runs after training_results is created
+    # No need for mo.stop() - dependency graph handles it!
     
     # Create comprehensive visualizations
     if 'error' in training_results:
