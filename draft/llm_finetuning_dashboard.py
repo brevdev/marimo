@@ -47,14 +47,20 @@ def __():
     from torch.utils.data import Dataset, DataLoader
     import json
     
-    # Check for transformers library
+    # Check for transformers library - try to import the actual classes we need
+    TRANSFORMERS_AVAILABLE = False
+    TRANSFORMERS_VERSION = None
     try:
         import transformers
+        # Actually try to import the classes we need, not just the package
+        from transformers import AutoTokenizer, AutoModelForCausalLM
         TRANSFORMERS_AVAILABLE = True
         TRANSFORMERS_VERSION = transformers.__version__
-    except ImportError:
+        print(f"✅ Transformers v{TRANSFORMERS_VERSION} - all required classes available")
+    except ImportError as e:
         TRANSFORMERS_AVAILABLE = False
         TRANSFORMERS_VERSION = None
+        print(f"⚠️ Transformers not available: {str(e)[:100]}")
     
     # Check for GPUtil for better GPU monitoring
     try:
@@ -236,19 +242,34 @@ def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
     GPT2LMHeadModel = None
     GPT2TokenizerFast = None
     
-    try:
-        from transformers import (
-            AutoModelForCausalLM, 
-            AutoTokenizer, 
-            get_linear_schedule_with_warmup,
-            GPT2LMHeadModel,
-            GPT2TokenizerFast
-        )
-        print("✅ Successfully imported transformers classes")
-    except ImportError:
-        # Fallback to None if still not available
-        print("⚠️ Transformers classes not available yet")
-        pass
+    if TRANSFORMERS_AVAILABLE:
+        try:
+            from transformers import (
+                AutoModelForCausalLM, 
+                AutoTokenizer, 
+                get_linear_schedule_with_warmup,
+                GPT2LMHeadModel,
+                GPT2TokenizerFast
+            )
+            print("✅ Successfully imported all transformers classes")
+        except ImportError as e:
+            # Fallback to None if still not available
+            print(f"⚠️ Import failed: {str(e)[:150]}")
+            pass
+    else:
+        # Try anyway in case it was just installed
+        try:
+            from transformers import (
+                AutoModelForCausalLM, 
+                AutoTokenizer, 
+                get_linear_schedule_with_warmup,
+                GPT2LMHeadModel,
+                GPT2TokenizerFast
+            )
+            print("✅ Successfully imported transformers classes (fresh install)")
+        except ImportError as e:
+            print(f"⚠️ Transformers still not available: {str(e)[:100]}")
+            pass
     
     return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, GPT2LMHeadModel, GPT2TokenizerFast
 
