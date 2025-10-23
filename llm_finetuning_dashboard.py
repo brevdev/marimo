@@ -285,8 +285,6 @@ def __(mo, TRANSFORMERS_VERSION, transformers_install_msg, gputil_install_msg):
             **What is LoRA?** LoRA freezes pretrained model weights and injects trainable 
             rank decomposition matrices, reducing trainable parameters by 10,000x while 
             maintaining quality.
-            
-            ## ⚙️ Training Configuration
             """
         ),
         transformers_install_msg if transformers_install_msg else mo.md(""),
@@ -562,6 +560,7 @@ def __(mo):
     )
     
     mo.vstack([
+        mo.md("## ⚙️ Training Configuration"),
         mo.hstack([learning_rate, lora_rank], justify="start"),
         mo.hstack([batch_size, num_epochs, use_mixed_precision], justify="start")
     ])
@@ -575,6 +574,9 @@ def __(mo):
 ---
 
 ## 🎛️ Hyperparameter Choices Explained
+
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
 
 ### Number of Epochs (Default: 3)
 **What it means**: How many times the model sees the entire dataset
@@ -650,6 +652,8 @@ def __(mo):
 - LoRA focused updates = efficient learning
 - Result: Loss drops from 8.7 → 0.06 in 150 steps (~4 seconds)!
 
+</details>
+
 ---
     """)
     return
@@ -662,6 +666,9 @@ def __(mo):
 ---
 
 ## ⚡ Why Mixed Precision (FP16) Training
+
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
 
 ### The Floating Point Precision Spectrum
 - **FP32 (32-bit)**: Traditional "full precision"
@@ -725,6 +732,8 @@ Optimizer: FP32 (stable convergence)
 - **Speedup**: ~8x theoretical, ~3-5x practical (memory bound)
 
 > **This is why your training is so fast (3-4 seconds for 3 epochs)!**
+
+</details>
 
 ---
     """)
@@ -833,6 +842,9 @@ def __(mo):
 
 ## 🧠 Why LoRA (Low-Rank Adaptation) Works
 
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
+
 ### The Traditional Fine-Tuning Problem
 - Large models have **billions of parameters** (GPT-3: 175B, LLaMA 2 70B: 70B)
 - **Full fine-tuning** requires:
@@ -874,6 +886,8 @@ LoRA: Add (A × B) where A is (4096 × 16), B is (16 × 4096)
 
 > **This demo trains 1.29% of parameters (1.6M / 126M) - that's LoRA magic!**
 
+</details>
+
 ---
     """)
     return
@@ -886,6 +900,9 @@ def __(mo):
 ---
 
 ## 🏗️ Why GPT-2's Conv1D is Unusual
+
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
 
 ### Standard Transformer Architecture
 
@@ -925,6 +942,8 @@ out_features = layer.weight.shape[1]
 - Weight shape extraction logic is model-specific
 
 > **This is why the implementation checks layer types carefully!**
+
+</details>
 
 ---
     """)
