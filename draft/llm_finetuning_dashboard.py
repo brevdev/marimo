@@ -292,7 +292,6 @@ def __(mo, TRANSFORMERS_VERSION, transformers_install_msg, gputil_install_msg):
         transformers_install_msg if transformers_install_msg else mo.md(""),
         gputil_install_msg if gputil_install_msg else mo.md("")
     ])
-    return
 
 
 @app.cell
@@ -631,7 +630,6 @@ def __(train_button, torch, np, mo):
         mo.md("✅ **Step 1/7 Complete:** Random seeds set for reproducibility"),
         kind="success"
     )
-    return
 
 
 @app.cell
@@ -648,7 +646,6 @@ def __(train_button, mo, batch_size, lora_rank, num_epochs, use_mixed_precision)
     - LoRA Rank: {lora_rank.value}
     - Precision: {'FP16' if use_mixed_precision.value else 'FP32'}
     """)
-    return
 
 
 @app.cell
@@ -854,7 +851,6 @@ def __(train_button, training_losses, total_training_time, mo):
         mo.md(f"✅ **Step 5/7 Complete:** Training finished in **{total_training_time:.1f}s** - Final loss: **{training_losses[-1]:.4f}**"),
         kind="success"
     )
-    return
 
 
 @app.cell
@@ -907,7 +903,6 @@ def __(train_button, generated_samples, mo):
         mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(generated_samples)} samples**"),
         kind="success"
     )
-    return
 
 
 @app.cell
@@ -1238,7 +1233,6 @@ def __(mo):
         - [Brev.dev Documentation](https://brev.dev/docs)
         """
     )
-    return
 
 
 if __name__ == "__main__":
