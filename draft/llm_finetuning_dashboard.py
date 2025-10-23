@@ -840,7 +840,14 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
         kind="success"
     )
     
-    return _losses, _times, _epoch_stats, _gpu_memory_samples, _total_time
+    # Return without underscore prefix so other cells can use them
+    training_losses = _losses
+    training_times = _times
+    epoch_stats = _epoch_stats
+    gpu_memory_samples = _gpu_memory_samples
+    total_training_time = _total_time
+    
+    return training_losses, training_times, epoch_stats, gpu_memory_samples, total_training_time
 
 
 @app.cell
@@ -883,29 +890,32 @@ def __(train_button, model_with_lora, tokenizer, device, torch, mo):
         kind="success"
     )
     
-    return _generated_samples,
+    # Return without underscore prefix
+    generated_samples = _generated_samples
+    
+    return generated_samples,
 
 
 @app.cell
-def __(train_button, _losses, _times, _total_time, total_params, trainable_params, lora_params,
-      _epoch_stats, _gpu_memory_samples, _generated_samples, batch_size, np, torch, model_with_lora, tokenizer, mo):
+def __(train_button, training_losses, training_times, total_training_time, total_params, trainable_params, lora_params,
+      epoch_stats, gpu_memory_samples, generated_samples, batch_size, np, torch, model_with_lora, tokenizer, mo):
     """Step 7: Finalize results"""
     mo.stop(not train_button.value)
     
     training_results = {
-        'losses': _losses,
-        'times': _times,
-        'total_time': _total_time,
+        'losses': training_losses,
+        'times': training_times,
+        'total_time': total_training_time,
         'total_params': total_params,
         'trainable_params': trainable_params,
         'lora_params': lora_params,
-        'final_loss': _losses[-1],
-        'avg_loss': np.mean(_losses[-10:]),
-        'generated_samples': _generated_samples,
-        'epoch_stats': _epoch_stats,
-        'gpu_memory_samples': _gpu_memory_samples,
-        'num_batches': len(_losses),
-        'samples_per_sec': len(_losses) * batch_size.value / _total_time
+        'final_loss': training_losses[-1],
+        'avg_loss': np.mean(training_losses[-10:]),
+        'generated_samples': generated_samples,
+        'epoch_stats': epoch_stats,
+        'gpu_memory_samples': gpu_memory_samples,
+        'num_batches': len(training_losses),
+        'samples_per_sec': len(training_losses) * batch_size.value / total_training_time
     }
     
     # Cleanup GPU memory
