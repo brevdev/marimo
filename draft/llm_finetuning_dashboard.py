@@ -620,13 +620,11 @@ def __(train_button, torch, np, mo):
 
 
 @app.cell
-def __(train_button, device, use_mixed_precision, AutoModelForCausalLM, AutoTokenizer, torch, mo, 
-      batch_size, lora_rank, num_epochs, inject_lora, time, np, FineTuningDataset, DataLoader, learning_rate):
-    """Training loop with visible progress updates"""
+def __(train_button, mo, batch_size, lora_rank, num_epochs, use_mixed_precision):
+    """Show training configuration"""
     mo.stop(not train_button.value)
     
-    # Show training configuration
-    _config_display = mo.md(f"""
+    mo.md(f"""
     ## 🚀 Starting Fine-Tuning
     
     **Configuration:**
@@ -635,337 +633,255 @@ def __(train_button, device, use_mixed_precision, AutoModelForCausalLM, AutoToke
     - LoRA Rank: {lora_rank.value}
     - Precision: {'FP16' if use_mixed_precision.value else 'FP32'}
     """)
+    return
+
+
+@app.cell
+def __(train_button, device, use_mixed_precision, AutoModelForCausalLM, AutoTokenizer, torch, mo):
+    """Step 2: Load model and tokenizer"""
+    mo.stop(not train_button.value)
     
-    training_results = None
+    model_name = "gpt2"
     
-    try:
-        # ===== STEP 2: Load Model =====
-        _step2_status = mo.callout(
-            mo.md("🔄 **Step 2/7:** Loading GPT-2 model... (first time: ~2 min download)"),
-            kind="info"
+    # Load tokenizer
+    with mo.status.spinner(title="📥 Step 2/7: Loading tokenizer..."):
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load model  
+    with mo.status.spinner(title="📥 Step 2/7: Downloading GPT-2 model (first time: ~2 min)..."):
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            dtype=torch.float16 if use_mixed_precision.value else torch.float32
         )
+        model = model.to(device)
+    
+    mo.callout(
+        mo.md("✅ **Step 2/7 Complete:** Model and tokenizer loaded"),
+        kind="success"
+    )
+    
+    return model, tokenizer
+
+
+@app.cell
+def __(train_button, model, lora_rank, inject_lora, mo):
+    """Step 3: Inject LoRA layers"""
+    mo.stop(not train_button.value)
+    
+    model_with_lora, lora_params = inject_lora(model, rank=lora_rank.value)
+    total_params = sum(p.numel() for p in model_with_lora.parameters())
+    trainable_params = sum(p.numel() for p in model_with_lora.parameters() if p.requires_grad)
+    
+    mo.callout(
+        mo.md(f"✅ **Step 3/7 Complete:** LoRA injected - Training only **{trainable_params:,} / {total_params:,}** parameters ({100*trainable_params/total_params:.2f}%)"),
+        kind="success"
+    )
+    
+    return model_with_lora, total_params, trainable_params, lora_params
+
+
+@app.cell
+def __(train_button, model_with_lora, tokenizer, batch_size, learning_rate, device, torch, 
+      FineTuningDataset, DataLoader, mo):
+    """Step 4: Prepare dataset and optimizer"""
+    mo.stop(not train_button.value)
+    
+    dataset = FineTuningDataset(tokenizer, num_samples=200)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size.value,
+        shuffle=True
+    )
+    
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model_with_lora.parameters()),
+        lr=learning_rate.value
+    )
+    
+    # Warmup run for GPU
+    model_with_lora.train()
+    _warmup_batch = next(iter(dataloader))
+    _warmup_inputs = _warmup_batch['input_ids'][:1].to(device)
+    _warmup_mask = _warmup_batch['attention_mask'][:1].to(device)
+    _warmup_labels = _warmup_batch['labels'][:1].to(device)
+    _ = model_with_lora(input_ids=_warmup_inputs, attention_mask=_warmup_mask, labels=_warmup_labels)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    del _warmup_batch, _warmup_inputs, _warmup_mask, _warmup_labels, _
+    
+    mo.callout(
+        mo.md(f"✅ **Step 4/7 Complete:** Dataset ready - **{len(dataset)} samples**, **{len(dataloader)} batches**"),
+        kind="success"
+    )
+    
+    return dataset, dataloader, optimizer
+
+
+@app.cell
+def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mixed_precision, 
+      device, torch, time, np, mo):
+    """Step 5: Training loop"""
+    mo.stop(not train_button.value)
+    
+    mo.callout(
+        mo.md(f"🔄 **Step 5/7:** Training for **{num_epochs.value} epoch(s)**... (console shows batch progress)"),
+        kind="info"
+    )
+    
+    _losses = []
+    _times = []
+    _epoch_stats = []
+    _gpu_memory_samples = []
+    _start_time = time.time()
+    
+    for epoch in range(num_epochs.value):
+        _epoch_losses = []
+        _epoch_start = time.time()
+        print(f"\n  📍 Epoch {epoch+1}/{num_epochs.value}", flush=True)
         
-        model_name = "gpt2"
-        
-        # Load tokenizer
-        with mo.status.spinner(title="Loading tokenizer..."):
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                tokenizer.pad_token = tokenizer.eos_token
-            except Exception as e:
-                raise ImportError(
-                    f"Failed to load tokenizer. Please ensure transformers is properly installed.\n"
-                    f"Run: pip install --upgrade transformers\n"
-                    f"Original error: {str(e)}"
-                )
+        for batch_idx, batch in enumerate(dataloader):
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
             
-        # Load model
-        with mo.status.spinner(title="Downloading model (first time: ~2 min)..."):
-            try:
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    dtype=torch.float16 if use_mixed_precision.value else torch.float32
-                )
-                model = model.to(device)
-            except Exception as e:
-                raise ImportError(
-                    f"Failed to load GPT-2 model. Please ensure transformers is properly installed.\n"
-                    f"Run: pip install --upgrade transformers torch\n"
-                    f"Original error: {str(e)}"
-                )
-        
-        _step2_complete = mo.callout(
-            mo.md("✅ **Step 2/7 Complete:** Model and tokenizer loaded"),
-            kind="success"
-        )
-        
-        # ===== STEP 3: Inject LoRA =====
-        _step3_status = mo.callout(
-            mo.md("🔄 **Step 3/7:** Injecting LoRA layers..."),
-            kind="info"
-        )
-        
-        model, lora_params = inject_lora(model, rank=lora_rank.value)
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        
-        _step3_complete = mo.callout(
-            mo.md(f"✅ **Step 3/7 Complete:** LoRA injected - Training only **{trainable_params:,} / {total_params:,}** parameters ({100*trainable_params/total_params:.2f}%)"),
-            kind="success"
-        )
-        
-        # ===== STEP 4: Prepare Dataset =====
-        _step4_status = mo.callout(
-            mo.md("🔄 **Step 4/7:** Preparing dataset and optimizer..."),
-            kind="info"
-        )
-        
-        dataset = FineTuningDataset(tokenizer, num_samples=200)
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size.value,
-            shuffle=True
-        )
-        
-        optimizer = torch.optim.AdamW(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=learning_rate.value
-        )
-        
-        # Warmup run for GPU
-        model.train()
-        _warmup_batch = next(iter(dataloader))
-        _warmup_inputs = _warmup_batch['input_ids'][:1].to(device)
-        _warmup_mask = _warmup_batch['attention_mask'][:1].to(device)
-        _warmup_labels = _warmup_batch['labels'][:1].to(device)
-        _ = model(input_ids=_warmup_inputs, attention_mask=_warmup_mask, labels=_warmup_labels)
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        del _warmup_batch, _warmup_inputs, _warmup_mask, _warmup_labels, _
-        
-        _step4_complete = mo.callout(
-            mo.md(f"✅ **Step 4/7 Complete:** Dataset ready - **{len(dataset)} samples**, **{len(dataloader)} batches**"),
-            kind="success"
-        )
-        
-        # ===== STEP 5: Training Loop =====
-        _step5_status = mo.callout(
-            mo.md(f"🔄 **Step 5/7:** Training model for **{num_epochs.value} epoch(s)**... (check console for batch progress)"),
-            kind="info"
-        )
-        
-        _losses = []
-        _times = []
-        _epoch_stats = []
-        _gpu_memory_samples = []
-        _start_time = time.time()
-        
-        for epoch in range(num_epochs.value):
-            _epoch_losses = []
-            _epoch_start = time.time()
-            print(f"\n  📍 Epoch {epoch+1}/{num_epochs.value}", flush=True)
-            
-            for batch_idx, batch in enumerate(dataloader):
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
-                
-                # Forward pass
-                if use_mixed_precision.value and device.type == "cuda":
-                    with torch.cuda.amp.autocast():
-                        outputs = model(
-                            input_ids=input_ids,
-                            attention_mask=attention_mask,
-                            labels=labels
-                        )
-                        loss = outputs.loss
-                else:
-                    outputs = model(
+            # Forward pass
+            if use_mixed_precision.value and device.type == "cuda":
+                with torch.cuda.amp.autocast():
+                    outputs = model_with_lora(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
                         labels=labels
                     )
                     loss = outputs.loss
-                
-                # Backward pass
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                
-                # Synchronize for accurate timing
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
-                
-                # Track metrics
-                _epoch_losses.append(loss.item())
-                _losses.append(loss.item())
-                _times.append(time.time() - _start_time)
-                
-                # Print progress every 10 batches
-                if (batch_idx + 1) % 10 == 0 or batch_idx == 0:
-                    print(f"    Batch {batch_idx+1}/{len(dataloader)}: Loss = {loss.item():.4f}", flush=True)
-                
-                # Sample GPU memory periodically
-                if batch_idx % 5 == 0 and device.type == "cuda":
-                    _gpu_memory_samples.append({
-                        'time': time.time() - _start_time,
-                        'memory_gb': torch.cuda.memory_allocated(0) / 1024**3
-                    })
-            
-            # Epoch summary
-            _epoch_time = time.time() - _epoch_start
-            _epoch_stats.append({
-                'epoch': epoch + 1,
-                'avg_loss': np.mean(_epoch_losses),
-                'time': _epoch_time
-            })
-            print(f"  ✅ Epoch {epoch+1} complete: Avg Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s", flush=True)
-        
-        _total_time = time.time() - _start_time
-        
-        _step5_complete = mo.callout(
-            mo.md(f"✅ **Step 5/7 Complete:** Training finished in **{_total_time:.1f}s** - Final loss: **{_losses[-1]:.4f}**"),
-            kind="success"
-        )
-        
-        # ===== STEP 6: Generate Samples =====
-        _step6_status = mo.callout(
-            mo.md("🔄 **Step 6/7:** Generating sample outputs..."),
-            kind="info"
-        )
-        
-        model.eval()
-        _sample_prompts = [
-            "Translate English to French: Hello",
-            "Summarize this text: Machine learning is transforming",
-            "Answer the question: What is AI?",
-        ]
-        _generated_samples = []
-        
-        with torch.no_grad():
-            for _sample_idx, prompt in enumerate(_sample_prompts, 1):
-                inputs = tokenizer(prompt, return_tensors="pt").to(device)
-                outputs = model.generate(
-                    **inputs,
-                    max_length=50,
-                    num_return_sequences=1,
-                    temperature=0.7,
-                    do_sample=True
+            else:
+                outputs = model_with_lora(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels
                 )
-                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                _generated_samples.append({'prompt': prompt, 'output': generated_text})
-                print(f"  Sample {_sample_idx}/{len(_sample_prompts)}: Generated", flush=True)
+                loss = outputs.loss
+            
+            # Backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            # Synchronize for accurate timing
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            
+            # Track metrics
+            _epoch_losses.append(loss.item())
+            _losses.append(loss.item())
+            _times.append(time.time() - _start_time)
+            
+            # Print progress every 10 batches
+            if (batch_idx + 1) % 10 == 0 or batch_idx == 0:
+                print(f"    Batch {batch_idx+1}/{len(dataloader)}: Loss = {loss.item():.4f}", flush=True)
+            
+            # Sample GPU memory periodically
+            if batch_idx % 5 == 0 and device.type == "cuda":
+                _gpu_memory_samples.append({
+                    'time': time.time() - _start_time,
+                    'memory_gb': torch.cuda.memory_allocated(0) / 1024**3
+                })
         
-        _step6_complete = mo.callout(
-            mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(_generated_samples)} samples**"),
-            kind="success"
-        )
-        
-        # ===== STEP 7: Finalize =====
-        training_results = {
-            'losses': _losses,
-            'times': _times,
-            'total_time': _total_time,
-            'total_params': total_params,
-            'trainable_params': trainable_params,
-            'lora_params': lora_params,
-            'final_loss': _losses[-1],
-            'avg_loss': np.mean(_losses[-10:]),
-            'generated_samples': _generated_samples,
-            'epoch_stats': _epoch_stats,
-            'gpu_memory_samples': _gpu_memory_samples,
-            'num_batches': len(_losses),
-            'samples_per_sec': len(_losses) * batch_size.value / _total_time
-        }
-        
-        _step7_complete = mo.callout(
-            mo.md("✅ **Step 7/7 Complete:** Results ready! Scroll down to see visualizations."),
-            kind="success"
-        )
-        
-        # Cleanup GPU memory
-        del model, tokenizer
-        torch.cuda.empty_cache()
-        
-    except torch.cuda.OutOfMemoryError:
-        # Handle GPU OOM explicitly
-        torch.cuda.empty_cache()
-        training_results = {
-            'error': 'GPU Out of Memory',
-            'suggestion': f"""
-**GPU ran out of memory!**
-
-**Current settings**:
-- Batch size: {batch_size.value}
-- LoRA rank: {lora_rank.value}
-- Precision: {'FP16' if use_mixed_precision.value else 'FP32'}
-
-**Try these solutions**:
-1. Reduce batch size (try {max(1, batch_size.value // 2)})
-2. Reduce LoRA rank (try {max(4, lora_rank.value // 2)})
-3. Enable mixed precision if disabled
-4. Close other GPU applications
-
-**GPU**: {torch.cuda.get_device_properties(0).name} ({torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB)
-            """
-        }
-    except (ImportError, ModuleNotFoundError) as e:
-        # Handle transformers/model loading errors
-        training_results = {
-            'error': 'Missing Dependencies',
-            'suggestion': f"""
-**Failed to load model or dependencies!**
-
-**Error**: {str(e)}
-
-**Solution**:
-Install or upgrade the transformers library:
-
-```bash
-pip install --upgrade transformers torch
-```
-
-**For complete setup**:
-```bash
-pip install transformers torch numpy pandas plotly
-```
-
-After installation, restart the notebook and try again.
-
-**Need help?** Check [HuggingFace Transformers Docs](https://huggingface.co/docs/transformers)
-            """
-        }
-    except Exception as e:
-        training_results = {
-            'error': str(e),
-            'error_type': type(e).__name__,
-            'suggestion': f"""
-**Unexpected Error**: {type(e).__name__}
-
-**Details**: {str(e)}
-
-**Common solutions**:
-1. Check that all dependencies are installed
-2. Restart the notebook kernel
-3. Try reducing batch size or model complexity
-4. Check GPU memory availability
-
-If the error persists, please report it with the error details above.
-            """
-        }
+        # Epoch summary
+        _epoch_time = time.time() - _epoch_start
+        _epoch_stats.append({
+            'epoch': epoch + 1,
+            'avg_loss': np.mean(_epoch_losses),
+            'time': _epoch_time
+        })
+        print(f"  ✅ Epoch {epoch+1} complete: Avg Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s", flush=True)
     
-    # Stack all progress indicators for display
-    _all_progress = mo.vstack([
-        _config_display,
-        mo.md("---"),
-        _step2_status if '_step2_status' in locals() else mo.md(""),
-        _step2_complete if '_step2_complete' in locals() else mo.md(""),
-        _step3_status if '_step3_status' in locals() else mo.md(""),
-        _step3_complete if '_step3_complete' in locals() else mo.md(""),
-        _step4_status if '_step4_status' in locals() else mo.md(""),
-        _step4_complete if '_step4_complete' in locals() else mo.md(""),
-        _step5_status if '_step5_status' in locals() else mo.md(""),
-        _step5_complete if '_step5_complete' in locals() else mo.md(""),
-        _step6_status if '_step6_status' in locals() else mo.md(""),
-        _step6_complete if '_step6_complete' in locals() else mo.md(""),
-        _step7_complete if '_step7_complete' in locals() else mo.md(""),
-    ])
+    _total_time = time.time() - _start_time
     
-    _all_progress
+    mo.callout(
+        mo.md(f"✅ **Step 5/7 Complete:** Training finished in **{_total_time:.1f}s** - Final loss: **{_losses[-1]:.4f}**"),
+        kind="success"
+    )
+    
+    return _losses, _times, _epoch_stats, _gpu_memory_samples, _total_time
+
+
+@app.cell
+def __(train_button, model_with_lora, tokenizer, device, torch, mo):
+    """Step 6: Generate sample outputs"""
+    mo.stop(not train_button.value)
+    
+    model_with_lora.eval()
+    _sample_prompts = [
+        "Translate English to French: Hello",
+        "Summarize this text: Machine learning is transforming",
+        "Answer the question: What is AI?",
+    ]
+    _generated_samples = []
+    
+    with torch.no_grad():
+        for prompt in _sample_prompts:
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            outputs = model_with_lora.generate(
+                **inputs,
+                max_length=50,
+                num_return_sequences=1,
+                temperature=0.7,
+                do_sample=True
+            )
+            generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            _generated_samples.append({'prompt': prompt, 'output': generated_text})
+    
+    mo.callout(
+        mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(_generated_samples)} samples**"),
+        kind="success"
+    )
+    
+    return _generated_samples,
+
+
+@app.cell
+def __(train_button, _losses, _times, _total_time, total_params, trainable_params, lora_params,
+      _epoch_stats, _gpu_memory_samples, _generated_samples, batch_size, np, torch, model_with_lora, tokenizer, mo):
+    """Step 7: Finalize results"""
+    mo.stop(not train_button.value)
+    
+    training_results = {
+        'losses': _losses,
+        'times': _times,
+        'total_time': _total_time,
+        'total_params': total_params,
+        'trainable_params': trainable_params,
+        'lora_params': lora_params,
+        'final_loss': _losses[-1],
+        'avg_loss': np.mean(_losses[-10:]),
+        'generated_samples': _generated_samples,
+        'epoch_stats': _epoch_stats,
+        'gpu_memory_samples': _gpu_memory_samples,
+        'num_batches': len(_losses),
+        'samples_per_sec': len(_losses) * batch_size.value / _total_time
+    }
+    
+    # Cleanup GPU memory
+    del model_with_lora, tokenizer
+    torch.cuda.empty_cache()
+    
+    mo.callout(
+        mo.md("✅ **Step 7/7 Complete:** Results ready! Scroll down to see visualizations."),
+        kind="success"
+    )
     
     return training_results,
 
 
 @app.cell
-def __(training_results, mo, go, pd, np):
+def __(train_button, training_results, mo, go, pd, np):
     """Visualize training results"""
     
-    if training_results is None:
-        mo.callout(
-            mo.md("👈 **Click 'Start Fine-Tuning' to begin training**\n\nThis will train a GPT-2 model using LoRA and show real-time metrics."),
-            kind="info"
-        )
-    elif 'error' in training_results:
+    mo.stop(not train_button.value)
+    
+    # Create comprehensive visualizations
+    if 'error' in training_results:
         error_msg = f"**Training Error**: {training_results['error']}"
         if 'suggestion' in training_results:
             error_msg += f"\n\n{training_results['suggestion']}"
