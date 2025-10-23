@@ -197,11 +197,12 @@ def __(mo, cudf_available):
 
 
 @app.cell
-def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, cudf_available):
-    """Display benchmark controls"""
+def __(mo, dataset_size, operations, mode_toggle, cudf_available):
+    """Display benchmark controls (without run button - that comes after education)"""
     mo.vstack([
+        mo.md("## ⚙️ Benchmark Configuration"),
         mo.hstack([dataset_size, operations], justify="start"),
-        mo.hstack([mode_toggle, run_benchmark_btn], justify="start"),
+        mo.hstack([mode_toggle], justify="start"),
         mo.md(f"**Dataset will have**: {10**dataset_size.value:,} rows"),
         mo.callout(
             mo.md(f"""
@@ -220,8 +221,9 @@ def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, cudf_availa
 @app.cell
 def __(mo):
     """Educational: Understanding Benchmark Operations"""
-    mo.callout(
-        mo.md("""
+    mo.md("""
+---
+
 ## 🔬 Understanding the Benchmark Operations
 
 ### Filter Operation
@@ -290,9 +292,9 @@ def __(mo):
 - Sorting has more dependencies than other operations
 - More GPU synchronization points required
 - Memory access patterns less optimal
-        """),
-        kind="info"
-    )
+
+---
+    """)
     return
 
 
@@ -371,42 +373,51 @@ def __(torch, mo, subprocess):
 @app.cell
 def __(mo):
     """Educational: Why GPU-Accelerated DataFrames?"""
-    mo.callout(
-        mo.md("""
+    mo.md("""
+---
+
 ## 💡 Why GPU-Accelerated DataFrames?
 
-**The Problem with Traditional Data Processing:**
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
+
+### The Problem with Traditional Data Processing
 - CPUs process data **sequentially** (one row at a time, even with multiple cores)
 - Moving data between CPU cores is slow due to memory bandwidth limits
 - Python loops are especially slow due to interpreter overhead
 
-**How GPUs Solve This:**
+### How GPUs Solve This
 - GPUs have **thousands of cores** (vs CPU's ~10-100 cores)
 - **Massively parallel**: Process thousands of rows simultaneously
 - **High memory bandwidth**: 10-20x faster than CPU memory (900 GB/s vs 50 GB/s)
 - **SIMD operations**: Same instruction on many data points at once
 
-**When GPU Acceleration Helps Most:**
+### When GPU Acceleration Helps Most
 - ✅ **Large datasets** (1M+ rows) - enough work to saturate GPU
-- ✅ **Simple operations** (filter, groupby, join) - GPU-optimized kernels
+- ✅ **Vectorized operations** (filter, groupby, join, math) - GPU-optimized kernels
 - ✅ **Batch processing** - amortize data transfer costs
-- ❌ **Complex Python logic** - GPU can't execute arbitrary Python
+- ❌ **Row-by-row `.apply()` with custom functions** - falls back to slow CPU execution
 - ❌ **Small datasets** (<10K rows) - CPU faster due to transfer overhead
 
-**The 1M Row Threshold:**
+> **Note**: Python works great with GPUs! cuDF, PyTorch, and RAPIDS are all Python. 
+> The limitation is row-by-row operations, not Python itself. Stick to vectorized operations (built-in functions) for speed.
 
-Below ~1M rows, CPU is often faster because:
+### The 1M Row Threshold
+
+**Below ~1M rows**, CPU is often faster because:
 1. **Data transfer overhead**: Moving data to GPU takes ~1ms
 2. **Kernel launch overhead**: Starting GPU kernels takes time
 3. **CPU caches work well**: Small data fits in L1/L2/L3 cache
 
-Above 1M rows:
+**Above 1M rows**:
 - Data no longer fits in CPU cache
 - GPU's parallelism overcomes overhead
 - 10-50x speedups become common
-        """),
-        kind="info"
-    )
+
+</details>
+
+---
+    """)
     return
 
 
@@ -420,8 +431,9 @@ def __(mo):
 @app.cell
 def __(mo):
     """Educational: Understanding GPU Metrics"""
-    mo.callout(
-        mo.md("""
+    mo.md("""
+---
+
 ## 📊 Understanding GPU Metrics
 
 ### GPU Utilization (%)
@@ -474,9 +486,20 @@ def __(mo):
 **Performance impact:**
 - Every 10°C above 65°C = ~5-10% performance loss
 - Throttling at 85°C = 15-30% performance loss
-        """),
-        kind="info"
-    )
+
+---
+    """)
+    return
+
+
+@app.cell
+def __(mo, run_benchmark_btn):
+    """Display run benchmark button after educational content"""
+    mo.vstack([
+        mo.md("## 🏃 Ready to Run"),
+        run_benchmark_btn,
+        mo.md("_Once you click the button above, the benchmark will execute and results will appear below._")
+    ])
     return
 
 
