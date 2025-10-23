@@ -1015,6 +1015,12 @@ def __(train_button, training_results, mo, go, pd, np):
     else:
         # Create comprehensive visualizations
         
+        # Helper to format numbers safely (handle NaN)
+        def safe_format(value, format_str=".4f"):
+            if np.isnan(value) or np.isinf(value):
+                return "❌ NaN (training failed)"
+            return f"{value:{format_str}}"
+        
         # 1. Key Metrics Cards
         param_reduction = training_results['total_params'] / max(training_results['trainable_params'], 1)
         
@@ -1041,8 +1047,8 @@ def __(train_button, training_results, mo, go, pd, np):
             ),
             metric_card(
                 "Final Loss",
-                f"{training_results['final_loss']:.4f}",
-                f"Avg: {training_results['avg_loss']:.4f}"
+                safe_format(training_results['final_loss']),
+                f"Avg: {safe_format(training_results['avg_loss'])}"
             ),
             metric_card(
                 "Total Batches",
