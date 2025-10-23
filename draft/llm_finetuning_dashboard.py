@@ -944,7 +944,7 @@ def __(train_button, training_results, mo, go, pd, np):
         if 'error_type' in training_results:
             error_msg += f"\n\n*Error type: {training_results['error_type']}*"
         
-        mo.callout(
+        return mo.callout(
             mo.md(error_msg),
             kind="danger"
         )
@@ -1134,7 +1134,7 @@ def __(train_button, training_results, mo, go, pd, np):
         )
         
         # Assemble the dashboard
-        mo.vstack([
+        visualization_output = mo.vstack([
             mo.md("# ✅ Training Complete!"),
             mo.md("---"),
             
@@ -1176,7 +1176,7 @@ def __(train_button, training_results, mo, go, pd, np):
                 kind="info"
             )
         ])
-    return
+        return visualization_output
 
 
 @app.cell
