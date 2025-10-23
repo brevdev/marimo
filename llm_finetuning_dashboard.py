@@ -295,6 +295,245 @@ def __(mo, TRANSFORMERS_VERSION, transformers_install_msg, gputil_install_msg):
 
 
 @app.cell
+def __(torch, mo, subprocess, Dict):
+    """GPU Detection and Validation"""
+    
+    def get_gpu_info() -> Dict:
+        """Query NVIDIA GPU information"""
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=index,name,memory.total,compute_cap', 
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, check=True, timeout=5
+            )
+            
+            gpus = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    idx, name, mem, compute = line.split(', ')
+                    gpus.append({
+                        'GPU': int(idx),
+                        'Model': name,
+                        'Memory (GB)': f"{int(mem) / 1024:.1f}",
+                        'Compute Cap': compute
+                    })
+            return {'available': True, 'gpus': gpus}
+        except Exception as e:
+            return {'available': False, 'error': str(e)}
+    
+    gpu_info = get_gpu_info()
+    
+    # Stop execution if no GPU available
+    if not gpu_info['available']:
+        mo.stop(
+            True,
+            mo.callout(
+                mo.md(f"""
+                ⚠️ **No GPU Detected**
+                
+                This notebook requires an NVIDIA GPU for LLM fine-tuning.
+                
+                **Error**: {gpu_info.get('error', 'Unknown error')}
+                
+                **Troubleshooting**:
+                - Run `nvidia-smi` to verify GPU is detected
+                - Check CUDA driver installation
+                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
+                
+                **Note**: CPU training is too slow for LLMs - GPU is required.
+                """),
+                kind="danger"
+            )
+        )
+    
+    # Display GPU info
+    mo.callout(
+        mo.vstack([
+            mo.md("**✅ GPU Detected**"),
+            mo.ui.table(gpu_info['gpus'])
+        ]),
+        kind="success"
+    )
+    
+    device = torch.device("cuda")
+    
+    return get_gpu_info, gpu_info, device
+
+
+@app.cell
+def __(mo, device, torch):
+    """GPU Info Display"""
+    try:
+        if device.type == "cuda":
+            gpu_props = torch.cuda.get_device_properties(0)
+            total_gb = gpu_props.total_memory / 1024**3
+            
+            # Decode compute capability
+            cc = f"{gpu_props.major}.{gpu_props.minor}"
+            cc_info = {
+                "8.9": "Ada Lovelace (Data Center)",
+                "8.6": "Ampere (RTX 30 series)",
+                "8.0": "Ampere (A100)",
+                "7.5": "Turing (RTX 20 series)",
+                "7.0": "Volta (V100)",
+            }
+            arch = cc_info.get(cc, f"Architecture {cc}")
+            
+            gpu_info_display = mo.callout(
+                mo.md(f"""
+**🖥️ GPU Detected**: {gpu_props.name}  
+**Total Memory**: {total_gb:.2f} GB  
+**Compute Capability**: {cc} _{arch}_
+
+💡 **Compute Capability** is NVIDIA's GPU architecture version. Higher = newer/better features.  
+💡 GPU metrics (utilization, memory, temperature) will be tracked during training.
+                """),
+                kind="success"
+            )
+        else:
+            gpu_info_display = mo.callout(
+                mo.md("**CPU Mode**: No GPU detected. Training will run on CPU (slower)."),
+                kind="warn"
+            )
+    except Exception as e:
+        gpu_info_display = mo.callout(
+            mo.md(f"**Error reading GPU info**: {str(e)}"),
+            kind="danger"
+        )
+    
+    gpu_info_display
+    
+    return gpu_info_display,
+
+
+@app.cell
+def __(Dataset, torch, List, Tuple, Dict):
+    """Dataset preparation"""
+    
+    class FineTuningDataset(Dataset):
+        """Simple dataset for demonstration - replace with your own data"""
+        
+        def __init__(self, tokenizer, num_samples: int = 100):
+            self.tokenizer = tokenizer
+            self.samples = self._generate_samples(num_samples)
+        
+        def _generate_samples(self, num_samples: int) -> List[str]:
+            """Generate realistic synthetic training samples for demonstration"""
+            
+            # Realistic examples that look like actual fine-tuning data
+            examples = [
+                # Translation examples
+                "Translate to French: Hello, how are you? -> Bonjour, comment allez-vous?",
+                "Translate to French: The weather is nice today. -> Le temps est beau aujourd'hui.",
+                "Translate to Spanish: Good morning! -> Buenos días!",
+                "Translate to Spanish: Thank you very much. -> Muchas gracias.",
+                "Translate to German: Where is the train station? -> Wo ist der Bahnhof?",
+                
+                # Summarization examples
+                "Summarize: Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. Summary: ML allows computers to learn from data.",
+                "Summarize: The annual tech conference showcased innovations in AI, robotics, and quantum computing. Summary: Conference highlighted AI, robotics, and quantum tech advances.",
+                "Summarize: Climate change poses significant challenges requiring global cooperation and sustainable practices. Summary: Climate change demands worldwide action and sustainability.",
+                
+                # Question answering
+                "Question: What is machine learning? Answer: Machine learning is a method of teaching computers to learn from data and make decisions.",
+                "Question: Who invented the telephone? Answer: Alexander Graham Bell invented the telephone in 1876.",
+                "Question: What is photosynthesis? Answer: Photosynthesis is the process plants use to convert sunlight into energy.",
+                "Question: What is the capital of France? Answer: The capital of France is Paris.",
+                
+                # Instruction following
+                "Instruction: Write a haiku about coding. Output: Lines of code flow smooth / Logic dances on the screen / Bugs vanish at dawn",
+                "Instruction: Explain recursion simply. Output: Recursion is when a function calls itself to solve smaller versions of the same problem.",
+                "Instruction: List 3 benefits of exercise. Output: 1) Improves cardiovascular health 2) Boosts mood and energy 3) Strengthens muscles and bones",
+                
+                # Sentiment analysis
+                "Classify sentiment: This movie was absolutely amazing! Label: Positive",
+                "Classify sentiment: I'm disappointed with the service. Label: Negative",
+                "Classify sentiment: The product works as expected. Label: Neutral",
+                
+                # Code generation
+                "Generate Python: function to add two numbers -> def add(a, b): return a + b",
+                "Generate Python: function to reverse a string -> def reverse(s): return s[::-1]",
+            ]
+            
+            # Repeat and vary examples to reach desired num_samples
+            samples = []
+            for i in range(num_samples):
+                base_example = examples[i % len(examples)]
+                # Add slight variation to index for uniqueness
+                if i >= len(examples):
+                    variation_num = i // len(examples)
+                    samples.append(f"{base_example} [v{variation_num}]")
+                else:
+                    samples.append(base_example)
+            
+            return samples
+        
+        def __len__(self) -> int:
+            return len(self.samples)
+        
+        def __getitem__(self, idx: int) -> Dict:
+            text = self.samples[idx]
+            encodings = self.tokenizer(
+                text,
+                truncation=True,
+                padding='max_length',
+                max_length=128,
+                return_tensors='pt'
+            )
+            return {
+                'input_ids': encodings['input_ids'].squeeze(0),
+                'attention_mask': encodings['attention_mask'].squeeze(0),
+                'labels': encodings['input_ids'].squeeze(0)
+            }
+    
+    return FineTuningDataset,
+
+
+@app.cell
+def __(mo, pd, FineTuningDataset):
+    """Preview the training dataset"""
+    
+    # Create sample dataset to show (using a dummy tokenizer-like object)
+    class DummyTokenizer:
+        def __init__(self):
+            pass
+    
+    dummy_tok = DummyTokenizer()
+    preview_dataset = FineTuningDataset(dummy_tok, num_samples=200)
+    preview_samples = preview_dataset._generate_samples(200)
+    
+    # Create DataFrame for display (all 200 samples)
+    dataset_df = pd.DataFrame({
+        'Index': range(len(preview_samples)),
+        'Training Sample': preview_samples
+    })
+    
+    mo.vstack([
+        mo.md("## 📊 Training Dataset Preview"),
+        mo.callout(
+            mo.md("""
+**Realistic Demo Data**: This demo uses 200 synthetic training samples covering:
+- 🌍 Translation (English → French, Spanish, German)
+- 📝 Summarization (compress text into key points)
+- ❓ Question Answering (factual Q&A)
+- 📋 Instruction Following (haikus, explanations, lists)
+- 😊 Sentiment Analysis (positive/negative/neutral)
+- 💻 Code Generation (simple Python functions)
+
+💡 **For real applications**: Replace `FineTuningDataset` with your actual task-specific data!
+
+**Interactive Table** (showing all 200 samples with pagination):
+            """),
+            kind="info"
+        ),
+        mo.ui.table(dataset_df, selection=None, page_size=10),
+        mo.md("*Scroll through pages to see all samples. The model will see all 200 during training, shuffled across batches.*"),
+    ])
+    
+    return dataset_df,
+
+
+@app.cell
 def __(mo):
     """Interactive training controls"""
     learning_rate = mo.ui.slider(
@@ -490,201 +729,6 @@ Optimizer: FP32 (stable convergence)
 ---
     """)
     return
-
-
-@app.cell
-def __(torch, mo, subprocess, Dict):
-    """GPU Detection and Validation"""
-    
-    def get_gpu_info() -> Dict:
-        """Query NVIDIA GPU information"""
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=index,name,memory.total,compute_cap', 
-                 '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, check=True, timeout=5
-            )
-            
-            gpus = []
-            for line in result.stdout.strip().split('\n'):
-                if line:
-                    idx, name, mem, compute = line.split(', ')
-                    gpus.append({
-                        'GPU': int(idx),
-                        'Model': name,
-                        'Memory (GB)': f"{int(mem) / 1024:.1f}",
-                        'Compute Cap': compute
-                    })
-            return {'available': True, 'gpus': gpus}
-        except Exception as e:
-            return {'available': False, 'error': str(e)}
-    
-    gpu_info = get_gpu_info()
-    
-    # Stop execution if no GPU available
-    if not gpu_info['available']:
-        mo.stop(
-            True,
-            mo.callout(
-                mo.md(f"""
-                ⚠️ **No GPU Detected**
-                
-                This notebook requires an NVIDIA GPU for LLM fine-tuning.
-                
-                **Error**: {gpu_info.get('error', 'Unknown error')}
-                
-                **Troubleshooting**:
-                - Run `nvidia-smi` to verify GPU is detected
-                - Check CUDA driver installation
-                - Ensure PyTorch has CUDA support: `python -c "import torch; print(torch.cuda.is_available())"`
-                
-                **Note**: CPU training is too slow for LLMs - GPU is required.
-                """),
-                kind="danger"
-            )
-        )
-    
-    # Display GPU info
-    mo.callout(
-        mo.vstack([
-            mo.md("**✅ GPU Detected**"),
-            mo.ui.table(gpu_info['gpus'])
-        ]),
-        kind="success"
-    )
-    
-    device = torch.device("cuda")
-    
-    return get_gpu_info, gpu_info, device
-
-
-@app.cell
-def __(mo, device, torch):
-    """GPU Info Display"""
-    try:
-        if device.type == "cuda":
-            gpu_props = torch.cuda.get_device_properties(0)
-            total_gb = gpu_props.total_memory / 1024**3
-            
-            # Decode compute capability
-            cc = f"{gpu_props.major}.{gpu_props.minor}"
-            cc_info = {
-                "8.9": "Ada Lovelace (Data Center)",
-                "8.6": "Ampere (RTX 30 series)",
-                "8.0": "Ampere (A100)",
-                "7.5": "Turing (RTX 20 series)",
-                "7.0": "Volta (V100)",
-            }
-            arch = cc_info.get(cc, f"Architecture {cc}")
-            
-            gpu_info_display = mo.callout(
-                mo.md(f"""
-**🖥️ GPU Detected**: {gpu_props.name}  
-**Total Memory**: {total_gb:.2f} GB  
-**Compute Capability**: {cc} _{arch}_
-
-💡 **Compute Capability** is NVIDIA's GPU architecture version. Higher = newer/better features.  
-💡 GPU metrics (utilization, memory, temperature) will be tracked during training.
-                """),
-                kind="success"
-            )
-        else:
-            gpu_info_display = mo.callout(
-                mo.md("**CPU Mode**: No GPU detected. Training will run on CPU (slower)."),
-                kind="warn"
-            )
-    except Exception as e:
-        gpu_info_display = mo.callout(
-            mo.md(f"**Error reading GPU info**: {str(e)}"),
-            kind="danger"
-        )
-    
-    gpu_info_display
-    
-    return gpu_info_display,
-
-
-@app.cell
-def __(Dataset, torch, List, Tuple, Dict):
-    """Dataset preparation"""
-    
-    class FineTuningDataset(Dataset):
-        """Simple dataset for demonstration - replace with your own data"""
-        
-        def __init__(self, tokenizer, num_samples: int = 100):
-            self.tokenizer = tokenizer
-            self.samples = self._generate_samples(num_samples)
-        
-        def _generate_samples(self, num_samples: int) -> List[str]:
-            """Generate realistic synthetic training samples for demonstration"""
-            
-            # Realistic examples that look like actual fine-tuning data
-            examples = [
-                # Translation examples
-                "Translate to French: Hello, how are you? -> Bonjour, comment allez-vous?",
-                "Translate to French: The weather is nice today. -> Le temps est beau aujourd'hui.",
-                "Translate to Spanish: Good morning! -> Buenos días!",
-                "Translate to Spanish: Thank you very much. -> Muchas gracias.",
-                "Translate to German: Where is the train station? -> Wo ist der Bahnhof?",
-                
-                # Summarization examples
-                "Summarize: Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. Summary: ML allows computers to learn from data.",
-                "Summarize: The annual tech conference showcased innovations in AI, robotics, and quantum computing. Summary: Conference highlighted AI, robotics, and quantum tech advances.",
-                "Summarize: Climate change poses significant challenges requiring global cooperation and sustainable practices. Summary: Climate change demands worldwide action and sustainability.",
-                
-                # Question answering
-                "Question: What is machine learning? Answer: Machine learning is a method of teaching computers to learn from data and make decisions.",
-                "Question: Who invented the telephone? Answer: Alexander Graham Bell invented the telephone in 1876.",
-                "Question: What is photosynthesis? Answer: Photosynthesis is the process plants use to convert sunlight into energy.",
-                "Question: What is the capital of France? Answer: The capital of France is Paris.",
-                
-                # Instruction following
-                "Instruction: Write a haiku about coding. Output: Lines of code flow smooth / Logic dances on the screen / Bugs vanish at dawn",
-                "Instruction: Explain recursion simply. Output: Recursion is when a function calls itself to solve smaller versions of the same problem.",
-                "Instruction: List 3 benefits of exercise. Output: 1) Improves cardiovascular health 2) Boosts mood and energy 3) Strengthens muscles and bones",
-                
-                # Sentiment analysis
-                "Classify sentiment: This movie was absolutely amazing! Label: Positive",
-                "Classify sentiment: I'm disappointed with the service. Label: Negative",
-                "Classify sentiment: The product works as expected. Label: Neutral",
-                
-                # Code generation
-                "Generate Python: function to add two numbers -> def add(a, b): return a + b",
-                "Generate Python: function to reverse a string -> def reverse(s): return s[::-1]",
-            ]
-            
-            # Repeat and vary examples to reach desired num_samples
-            samples = []
-            for i in range(num_samples):
-                base_example = examples[i % len(examples)]
-                # Add slight variation to index for uniqueness
-                if i >= len(examples):
-                    variation_num = i // len(examples)
-                    samples.append(f"{base_example} [v{variation_num}]")
-                else:
-                    samples.append(base_example)
-            
-            return samples
-        
-        def __len__(self) -> int:
-            return len(self.samples)
-        
-        def __getitem__(self, idx: int) -> Dict:
-            text = self.samples[idx]
-            encodings = self.tokenizer(
-                text,
-                truncation=True,
-                padding='max_length',
-                max_length=128,
-                return_tensors='pt'
-            )
-            return {
-                'input_ids': encodings['input_ids'].squeeze(0),
-                'attention_mask': encodings['attention_mask'].squeeze(0),
-                'labels': encodings['input_ids'].squeeze(0)
-            }
-    
-    return FineTuningDataset,
 
 
 @app.cell
@@ -897,50 +941,6 @@ def __(mo):
         train_button
     ])
     return train_button,
-
-
-@app.cell
-def __(mo, pd, FineTuningDataset):
-    """Preview the training dataset"""
-    
-    # Create sample dataset to show (using a dummy tokenizer-like object)
-    class DummyTokenizer:
-        def __init__(self):
-            pass
-    
-    dummy_tok = DummyTokenizer()
-    preview_dataset = FineTuningDataset(dummy_tok, num_samples=200)
-    preview_samples = preview_dataset._generate_samples(200)
-    
-    # Create DataFrame for display (all 200 samples)
-    dataset_df = pd.DataFrame({
-        'Index': range(len(preview_samples)),
-        'Training Sample': preview_samples
-    })
-    
-    mo.vstack([
-        mo.md("## 📊 Training Dataset Preview"),
-        mo.callout(
-            mo.md("""
-**Realistic Demo Data**: This demo uses 200 synthetic training samples covering:
-- 🌍 Translation (English → French, Spanish, German)
-- 📝 Summarization (compress text into key points)
-- ❓ Question Answering (factual Q&A)
-- 📋 Instruction Following (haikus, explanations, lists)
-- 😊 Sentiment Analysis (positive/negative/neutral)
-- 💻 Code Generation (simple Python functions)
-
-💡 **For real applications**: Replace `FineTuningDataset` with your actual task-specific data!
-
-**Interactive Table** (showing all 200 samples with pagination):
-            """),
-            kind="info"
-        ),
-        mo.ui.table(dataset_df, selection=None, page_size=10),
-        mo.md("*Scroll through pages to see all samples. The model will see all 200 during training, shuffled across batches.*"),
-    ])
-    
-    return dataset_df,
 
 
 @app.cell
