@@ -75,104 +75,80 @@ def __():
 @app.cell
 def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     """Auto-install transformers if missing"""
-    install_status = None
+    transformers_install_msg = None
     
     if not TRANSFORMERS_AVAILABLE:
-        with mo.status.spinner(
-            title="📦 Installing transformers library...",
-            subtitle="First-time setup - this will take 1-2 minutes"
-        ):
-            try:
-                print("🔄 Auto-installing transformers library...")
+        print("🔄 Transformers not found - starting auto-installation...")
+        try:
+            result = subprocess.run(
+                ["pip", "install", "--upgrade", "transformers"],
+                capture_output=True,
+                text=True,
+                timeout=180
+            )
+            
+            if result.returncode == 0:
+                print("✅ Transformers installed successfully!")
+                transformers_install_msg = mo.callout(
+                    mo.md("""
+                    ✅ **Transformers Installed Successfully!**
+                    
+                    The library is now available. You can proceed with fine-tuning.
+                    """),
+                    kind="success"
+                )
+            else:
+                print(f"❌ Installation failed: {result.stderr[:200]}")
+                transformers_install_msg = mo.callout(
+                    mo.md(f"""
+                    ❌ **Auto-installation Failed**
+                    
+                    Could not automatically install transformers.
+                    
+                    **Error**: {result.stderr[:300]}
+                    
+                    **Please install manually**:
+                    ```bash
+                    pip install transformers
+                    ```
+                    """),
+                    kind="danger"
+                )
+        except subprocess.TimeoutExpired:
+            print("⏱️ Installation timeout")
+            transformers_install_msg = mo.callout(
+                mo.md("""
+                ⏱️ **Installation Timeout**
                 
-                result = subprocess.run(
-                    ["pip", "install", "--upgrade", "transformers"],
-                    capture_output=True,
-                    text=True,
-                    timeout=180
-                )
+                The installation is taking longer than expected.
                 
-                if result.returncode == 0:
-                    install_status = "success"
-                    mo.stop(
-                        True,
-                        mo.callout(
-                            mo.md("""
-                            ✅ **Installation Complete!**
-                            
-                            The transformers library has been installed successfully.
-                            
-                            **→ Please restart the notebook now** (stop and run again) for changes to take effect.
-                            
-                            This is a one-time setup - you won't see this message again.
-                            """),
-                            kind="success"
-                        )
-                    )
-                else:
-                    install_status = "failed"
-                    mo.stop(
-                        True,
-                        mo.callout(
-                            mo.md(f"""
-                            ❌ **Auto-installation Failed**
-                            
-                            Could not automatically install transformers.
-                            
-                            **Error**: {result.stderr[:500]}
-                            
-                            **Please install manually**:
-                            ```bash
-                            pip install transformers
-                            ```
-                            
-                            Then restart the notebook.
-                            """),
-                            kind="danger"
-                        )
-                    )
-            except subprocess.TimeoutExpired:
-                install_status = "timeout"
-                mo.stop(
-                    True,
-                    mo.callout(
-                        mo.md("""
-                        ⏱️ **Installation Timeout**
-                        
-                        The installation is taking longer than expected.
-                        
-                        **Please install manually in a terminal**:
-                        ```bash
-                        pip install transformers
-                        ```
-                        
-                        Then restart the notebook.
-                        """),
-                        kind="warn"
-                    )
-                )
-            except Exception as e:
-                install_status = "error"
-                mo.stop(
-                    True,
-                    mo.callout(
-                        mo.md(f"""
-                        ❌ **Installation Error**
-                        
-                        {str(e)}
-                        
-                        **Please install manually**:
-                        ```bash
-                        pip install transformers
-                        ```
-                        
-                        Then restart the notebook.
-                        """),
-                        kind="danger"
-                    )
-                )
+                **Please install manually in a terminal**:
+                ```bash
+                pip install transformers
+                ```
+                """),
+                kind="warn"
+            )
+        except Exception as e:
+            print(f"❌ Installation error: {str(e)}")
+            transformers_install_msg = mo.callout(
+                mo.md(f"""
+                ❌ **Installation Error**
+                
+                {str(e)}
+                
+                **Please install manually**:
+                ```bash
+                pip install transformers
+                ```
+                """),
+                kind="danger"
+            )
+    else:
+        print("✅ Transformers library already available")
+        transformers_install_msg = None
     
-    return install_status,
+    return transformers_install_msg,
 
 
 @app.cell
@@ -238,9 +214,10 @@ def __(mo, GPUTIL_AVAILABLE, subprocess):
 
 
 @app.cell
-def __(TRANSFORMERS_AVAILABLE):
+def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
     """Import transformers after check - always try fresh import"""
     # Always attempt fresh import (in case it was just installed)
+    # Depends on transformers_install_msg to re-run after installation
     AutoModelForCausalLM = None
     AutoTokenizer = None
     get_linear_schedule_with_warmup = None
@@ -255,15 +232,17 @@ def __(TRANSFORMERS_AVAILABLE):
             GPT2LMHeadModel,
             GPT2TokenizerFast
         )
+        print("✅ Successfully imported transformers classes")
     except ImportError:
         # Fallback to None if still not available
+        print("⚠️ Transformers classes not available yet")
         pass
     
     return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, GPT2LMHeadModel, GPT2TokenizerFast
 
 
 @app.cell
-def __(mo, TRANSFORMERS_VERSION, gputil_install_msg):
+def __(mo, TRANSFORMERS_VERSION, transformers_install_msg, gputil_install_msg):
     """Title and description"""
     version_info = f" (transformers v{TRANSFORMERS_VERSION})" if TRANSFORMERS_VERSION else ""
     
@@ -283,6 +262,7 @@ def __(mo, TRANSFORMERS_VERSION, gputil_install_msg):
             ## ⚙️ Training Configuration
             """
         ),
+        transformers_install_msg if transformers_install_msg else mo.md(""),
         gputil_install_msg if gputil_install_msg else mo.md("")
     ])
     return
