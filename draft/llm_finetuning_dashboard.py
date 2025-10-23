@@ -799,6 +799,13 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
+            
+            # Gradient clipping to prevent NaN (especially important for FP16)
+            torch.nn.utils.clip_grad_norm_(
+                filter(lambda p: p.requires_grad, model_with_lora.parameters()), 
+                max_norm=1.0
+            )
+            
             optimizer.step()
             
             # Synchronize for accurate timing
