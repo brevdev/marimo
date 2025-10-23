@@ -1016,8 +1016,8 @@ def __(training_results, mo, go, pd, np):
         if 'error_type' in training_results:
             error_msg += f"\n\n*Error type: {training_results['error_type']}*"
         
-        # Display error
-        mo.callout(
+        # Display error and stop
+        output = mo.callout(
             mo.md(error_msg),
             kind="danger"
         )
@@ -1213,7 +1213,7 @@ def __(training_results, mo, go, pd, np):
         )
         
         # Assemble and display the dashboard
-        mo.vstack([
+        output = mo.vstack([
             mo.md("# ✅ Training Complete!"),
             mo.md("---"),
             
@@ -1255,6 +1255,9 @@ def __(training_results, mo, go, pd, np):
                 kind="info"
             )
         ])
+    
+    # Return output (works for both error and success cases)
+    output
 
 
 @app.cell
