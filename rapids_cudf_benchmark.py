@@ -154,8 +154,6 @@ def __(mo, cudf_available, install_result):
             **10-100x speedups** for common data manipulation operations.
             
             **cuDF Status**: {'✅ Available' if cudf_available else '⚠️ Not installed - will show CPU-only results'}
-            
-            ## ⚙️ Benchmark Configuration
             """
         ),
         install_result
@@ -226,6 +224,9 @@ def __(mo):
 
 ## 🔬 Understanding the Benchmark Operations
 
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
+
 ### Filter Operation
 **What it does**: Select rows meeting a condition (e.g., `value > 0.5`)
 
@@ -292,6 +293,8 @@ def __(mo):
 - Sorting has more dependencies than other operations
 - More GPU synchronization points required
 - Memory access patterns less optimal
+
+</details>
 
 ---
     """)
@@ -422,8 +425,11 @@ def __(mo):
 
 
 @app.cell
-def __(mo):
-    """Benchmark Results Section Header"""
+def __(mo, run_benchmark_btn):
+    """Benchmark Results Section Header (only after benchmark runs)"""
+    # Only show this header after user has clicked the run button
+    mo.stop(run_benchmark_btn.value == 0, mo.md(""))
+    
     mo.md("## 📊 Benchmark Results")
     return
 
@@ -435,6 +441,9 @@ def __(mo):
 ---
 
 ## 📊 Understanding GPU Metrics
+
+<details>
+<summary><strong>Click to expand educational content</strong></summary>
 
 ### GPU Utilization (%)
 **What it means**: Percentage of time GPU cores are actively computing
@@ -486,6 +495,8 @@ def __(mo):
 **Performance impact:**
 - Every 10°C above 65°C = ~5-10% performance loss
 - Throttling at 85°C = 15-30% performance loss
+
+</details>
 
 ---
     """)
