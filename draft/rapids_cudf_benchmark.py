@@ -405,6 +405,10 @@ def __(
     
     # Check if button was clicked (value increments on each click)
     if run_benchmark_btn.value > 0:
+        # Show spinner in marimo UI
+        _spinner = mo.status.spinner(subtitle=f"Benchmark running: {10**dataset_size.value:,} rows, {len(operations.value)} ops...")
+        _spinner.open()
+        
         print("=" * 80)
         print(f"🚀 BENCHMARK STARTING")
         print("=" * 80)
@@ -666,8 +670,13 @@ def __(
             print("=" * 80)
             print("📊 Results and GPU timeline charts are displayed below.")
             print("=" * 80 + "\n")
+            
+            # Close spinner
+            _spinner.close()
         
         except torch.cuda.OutOfMemoryError:
+            # Close spinner on error too
+            _spinner.close()
             # Handle GPU OOM explicitly
             torch.cuda.empty_cache()
             benchmark_results = {
@@ -689,6 +698,8 @@ def __(
                 'success': False
             }
         except Exception as e:
+            # Close spinner on error
+            _spinner.close()
             benchmark_results = {
                 'error': str(e),
                 'error_type': type(e).__name__,
@@ -696,51 +707,6 @@ def __(
             }
     
     return benchmark_results,
-
-
-@app.cell
-def __(run_benchmark_btn, benchmark_results, mo, dataset_size, operations, mode_toggle):
-    """Status indicator - shows immediately when benchmark starts"""
-    
-    _status_display = None
-    
-    # Check if button was clicked but benchmark hasn't completed yet
-    if run_benchmark_btn.value > 0 and benchmark_results is None:
-        # Benchmark is running - show clear indicator
-        _status_display = mo.callout(
-            mo.md(f"""
-            ⏳ **BENCHMARK RUNNING...**
-            
-            **Configuration:**
-            - Dataset: **{10**dataset_size.value:,} rows**
-            - Operations: **{', '.join(operations.value)}**
-            - Mode: **{mode_toggle.value}**
-            
-            **Expected Duration:** 10-60 seconds (varies by dataset size and GPU)
-            
-            ---
-            
-            🔄 **Please wait...** This cell will automatically update with results when complete.
-            
-            💡 **What's happening:**
-            - Generating synthetic dataset
-            - Running benchmarks for each operation
-            - Capturing GPU metrics timeline
-            - Computing speedup statistics
-            
-            *Note: Due to marimo's execution model, progress output appears after completion.*
-            """),
-            kind="info"
-        )
-    elif run_benchmark_btn.value > 0 and benchmark_results is not None:
-        # Benchmark completed - show nothing here (results cell will handle it)
-        _status_display = None
-    else:
-        # Button never clicked - show initial state
-        _status_display = mo.md("*Click 'Run Benchmark' above to start performance comparison*")
-    
-    _status_display if _status_display else mo.md("")
-    return
 
 
 @app.cell
