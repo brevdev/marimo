@@ -835,11 +835,6 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
     
     _total_time = time.time() - _start_time
     
-    mo.callout(
-        mo.md(f"✅ **Step 5/7 Complete:** Training finished in **{_total_time:.1f}s** - Final loss: **{_losses[-1]:.4f}**"),
-        kind="success"
-    )
-    
     # Return without underscore prefix so other cells can use them
     training_losses = _losses
     training_times = _times
@@ -848,6 +843,18 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
     total_training_time = _total_time
     
     return training_losses, training_times, epoch_stats, gpu_memory_samples, total_training_time
+
+
+@app.cell
+def __(train_button, training_losses, total_training_time, mo):
+    """Display Step 5 completion"""
+    mo.stop(not train_button.value)
+    
+    mo.callout(
+        mo.md(f"✅ **Step 5/7 Complete:** Training finished in **{total_training_time:.1f}s** - Final loss: **{training_losses[-1]:.4f}**"),
+        kind="success"
+    )
+    return
 
 
 @app.cell
@@ -885,15 +892,22 @@ def __(train_button, model_with_lora, tokenizer, device, torch, mo):
                 })
                 print(f"⚠️ Generation failed for prompt '{prompt[:30]}...': {str(e)[:100]}")
     
-    mo.callout(
-        mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(_generated_samples)} samples**"),
-        kind="success"
-    )
-    
     # Return without underscore prefix
     generated_samples = _generated_samples
     
     return generated_samples,
+
+
+@app.cell
+def __(train_button, generated_samples, mo):
+    """Display Step 6 completion"""
+    mo.stop(not train_button.value)
+    
+    mo.callout(
+        mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(generated_samples)} samples**"),
+        kind="success"
+    )
+    return
 
 
 @app.cell
