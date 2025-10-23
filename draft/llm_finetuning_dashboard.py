@@ -84,12 +84,14 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     
     if not TRANSFORMERS_AVAILABLE:
         print("🔄 Transformers not found - starting auto-installation...")
+        print("   (This will also install/upgrade torchvision for compatibility)")
         try:
+            # Install transformers and ensure torchvision compatibility
             result = subprocess.run(
-                ["pip", "install", "--upgrade", "transformers"],
+                ["pip", "install", "--upgrade", "transformers", "torchvision"],
                 capture_output=True,
                 text=True,
-                timeout=180
+                timeout=300  # Increased timeout for two packages
             )
             
             if result.returncode == 0:
