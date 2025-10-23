@@ -396,104 +396,37 @@ def __(torch, mo, subprocess, Dict):
 
 
 @app.cell
-def __(mo, gputil_install_msg):
-    """GPU Memory Monitor - Auto-refreshing"""
-    
-    gpu_memory_refresh = mo.ui.refresh(default_interval="2s")
-    
-    mo.vstack([
-        mo.md("### 📊 GPU Monitoring (Live)"),
-        gputil_install_msg if gputil_install_msg else mo.md(""),
-        gpu_memory_refresh
-    ])
-    return gpu_memory_refresh,
-
-
-@app.cell
-def __(mo, device, torch, gpu_memory_refresh, gputil_module, gputil_available):
-    """GPU Memory Display with visual cards"""
-    # Trigger refresh
-    _refresh_trigger = gpu_memory_refresh.value
-    
-    gpu_memory_display = None
-    
+def __(mo, device, torch):
+    """GPU Info Display"""
     try:
         if device.type == "cuda":
-            # Get torch memory info
-            allocated_gb = torch.cuda.memory_allocated(0) / 1024**3
-            reserved_gb = torch.cuda.memory_reserved(0) / 1024**3
-            total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            free_gb = total_gb - reserved_gb
-            mem_pct = (reserved_gb / total_gb) * 100 if total_gb > 0 else 0
+            gpu_props = torch.cuda.get_device_properties(0)
+            total_gb = gpu_props.total_memory / 1024**3
             
-            # Try to get GPU utilization from GPUtil
-            util_pct = 0
-            temp = "N/A"
-            if gputil_available and gputil_module is not None:
-                try:
-                    gpus = gputil_module.getGPUs()
-                    if gpus and len(gpus) > 0:
-                        gpu = gpus[0]
-                        util_pct = int(gpu.load * 100) if gpu.load is not None else 0
-                        temp = f"{int(gpu.temperature)}" if gpu.temperature is not None else "N/A"
-                except Exception:
-                    pass
-            
-            # Current time for display
-            from datetime import datetime
-            _update_time = datetime.now().strftime("%H:%M:%S")
-            
-            gpu_memory_display = mo.Html(f"""
-            <div style="position: relative;">
-                <div style="text-align: right; color: #888; font-size: 0.85em; margin-bottom: 10px; font-family: monospace;">
-                    ⏱️ Last updated: {_update_time}
-                </div>
-                <div style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
-                    <h3 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU 0: {torch.cuda.get_device_properties(0).name}</h3>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-                        <!-- Utilization Card -->
-                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #4CAF50;">
-                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">GPU Utilization</div>
-                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 8px;">{util_pct}%</div>
-                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                <div style="height: 100%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); width: {util_pct}%; transition: width 0.5s ease;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Memory Card -->
-                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
-                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory Usage</div>
-                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 4px;">{mem_pct:.0f}%</div>
-                            <div style="font-size: 0.75em; color: #888; margin-bottom: 8px;">{reserved_gb:.2f} GB / {total_gb:.1f} GB</div>
-                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                <div style="height: 100%; background: linear-gradient(90deg, #2196F3 0%, #1976D2 100%); width: {mem_pct}%; transition: width 0.5s ease;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Details Card -->
-                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #FF9800;">
-                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory Details</div>
-                            <div style="font-size: 0.85em; color: #333; line-height: 1.6;">
-                                <div>🔵 Allocated: {allocated_gb:.2f} GB</div>
-                                <div>🟢 Free: {free_gb:.2f} GB</div>
-                                <div>🌡️ Temp: {temp}°C</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            """)
+            gpu_info_display = mo.callout(
+                mo.md(f"""
+**🖥️ GPU Detected**: {gpu_props.name}  
+**Total Memory**: {total_gb:.2f} GB  
+**Compute Capability**: {gpu_props.major}.{gpu_props.minor}
+
+💡 GPU metrics (utilization, memory, temperature) will be tracked during training and shown in visualizations.
+                """),
+                kind="success"
+            )
         else:
-            gpu_memory_display = mo.md("*CPU mode - no GPU tracking*")
+            gpu_info_display = mo.callout(
+                mo.md("**CPU Mode**: No GPU detected. Training will run on CPU (slower)."),
+                kind="warn"
+            )
     except Exception as e:
-        gpu_memory_display = mo.callout(
-            mo.md(f"⚠️ Error reading GPU metrics: {str(e)}"),
-            kind="warn"
+        gpu_info_display = mo.callout(
+            mo.md(f"**Error reading GPU info**: {str(e)}"),
+            kind="danger"
         )
     
-    gpu_memory_display
-    return gpu_memory_display,
+    gpu_info_display
+    
+    return gpu_info_display,
 
 
 @app.cell
@@ -647,6 +580,45 @@ def __(mo):
         train_button
     ])
     return train_button,
+
+
+@app.cell
+def __(mo, pd, FineTuningDataset):
+    """Preview the training dataset"""
+    
+    # Create sample dataset to show (using a dummy tokenizer-like object)
+    class DummyTokenizer:
+        def __init__(self):
+            pass
+    
+    dummy_tok = DummyTokenizer()
+    preview_dataset = FineTuningDataset(dummy_tok, num_samples=10)
+    preview_samples = preview_dataset._generate_samples(10)
+    
+    # Create DataFrame for display
+    dataset_df = pd.DataFrame({
+        'Index': range(len(preview_samples)),
+        'Training Sample': preview_samples
+    })
+    
+    mo.vstack([
+        mo.md("## 📊 Training Dataset Preview"),
+        mo.callout(
+            mo.md("""
+**Sample Data**: This demo uses 200 synthetic training samples. The model will learn patterns from this data.
+
+💡 **For real applications**: Replace `FineTuningDataset` with your actual task-specific data 
+(translation pairs, summarization examples, Q&A datasets, etc.)
+
+**Preview** (showing first 10 of 200 samples):
+            """),
+            kind="info"
+        ),
+        mo.ui.table(dataset_df, selection=None, page_size=10),
+        mo.md("*The model will see all 200 samples during training, shuffled across batches.*"),
+    ])
+    
+    return dataset_df,
 
 
 @app.cell
