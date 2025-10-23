@@ -56,10 +56,19 @@ def __():
         TRANSFORMERS_AVAILABLE = False
         TRANSFORMERS_VERSION = None
     
+    # Check for GPUtil for better GPU monitoring
+    try:
+        import GPUtil
+        GPUTIL_AVAILABLE = True
+    except ImportError:
+        GPUtil = None
+        GPUTIL_AVAILABLE = False
+    
     return (
         mo, torch, nn, np, pd, go, Optional, Dict, List, Tuple,
         subprocess, time, dataclass, Dataset, DataLoader, json,
-        TRANSFORMERS_AVAILABLE, TRANSFORMERS_VERSION
+        TRANSFORMERS_AVAILABLE, TRANSFORMERS_VERSION,
+        GPUtil, GPUTIL_AVAILABLE
     )
 
 
@@ -308,40 +317,120 @@ def __(torch, mo, subprocess, Dict):
 
 
 @app.cell
-def __(mo):
+def __(mo, GPUTIL_AVAILABLE):
     """GPU Memory Monitor - Auto-refreshing"""
+    
+    # Show GPUtil installation suggestion if not available
+    _gputil_msg = None
+    if not GPUTIL_AVAILABLE:
+        _gputil_msg = mo.callout(
+            mo.md("""
+            💡 **Enhanced GPU monitoring available!**
+            
+            Install GPUtil for real-time GPU utilization and temperature:
+            ```bash
+            pip install gputil
+            ```
+            Then restart the notebook for full monitoring features.
+            """),
+            kind="info"
+        )
+    
     gpu_memory_refresh = mo.ui.refresh(default_interval="2s")
-    gpu_memory_refresh
+    
+    mo.vstack([
+        mo.md("### 📊 GPU Monitoring (Live)"),
+        _gputil_msg if _gputil_msg else mo.md(""),
+        gpu_memory_refresh
+    ])
     return gpu_memory_refresh,
 
 
 @app.cell
-def __(mo, device, torch, gpu_memory_refresh, Optional, Dict):
-    """GPU Memory Display"""
+def __(mo, device, torch, gpu_memory_refresh, GPUtil, GPUTIL_AVAILABLE):
+    """GPU Memory Display with visual cards"""
     # Trigger refresh
     _refresh_trigger = gpu_memory_refresh.value
     
-    def get_gpu_memory() -> Optional[Dict]:
-        """Get current GPU memory usage"""
+    gpu_memory_display = None
+    
+    try:
         if device.type == "cuda":
-            allocated = torch.cuda.memory_allocated(0) / 1024**3
-            reserved = torch.cuda.memory_reserved(0) / 1024**3
-            total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            return {
-                'Allocated (GB)': f"{allocated:.2f}",
-                'Reserved (GB)': f"{reserved:.2f}",
-                'Free (GB)': f"{total - reserved:.2f}",
-                'Total (GB)': f"{total:.2f}"
-            }
-        return None
+            # Get torch memory info
+            allocated_gb = torch.cuda.memory_allocated(0) / 1024**3
+            reserved_gb = torch.cuda.memory_reserved(0) / 1024**3
+            total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            free_gb = total_gb - reserved_gb
+            mem_pct = (reserved_gb / total_gb) * 100 if total_gb > 0 else 0
+            
+            # Try to get GPU utilization from GPUtil
+            util_pct = 0
+            temp = "N/A"
+            if GPUTIL_AVAILABLE and GPUtil is not None:
+                try:
+                    gpus = GPUtil.getGPUs()
+                    if gpus and len(gpus) > 0:
+                        gpu = gpus[0]
+                        util_pct = int(gpu.load * 100) if gpu.load is not None else 0
+                        temp = f"{int(gpu.temperature)}" if gpu.temperature is not None else "N/A"
+                except Exception:
+                    pass
+            
+            # Current time for display
+            from datetime import datetime
+            _update_time = datetime.now().strftime("%H:%M:%S")
+            
+            gpu_memory_display = mo.Html(f"""
+            <div style="position: relative;">
+                <div style="text-align: right; color: #888; font-size: 0.85em; margin-bottom: 10px; font-family: monospace;">
+                    ⏱️ Last updated: {_update_time}
+                </div>
+                <div style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU 0: {torch.cuda.get_device_properties(0).name}</h3>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                        <!-- Utilization Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #4CAF50;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">GPU Utilization</div>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 8px;">{util_pct}%</div>
+                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); width: {util_pct}%; transition: width 0.5s ease;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Memory Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory Usage</div>
+                            <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 4px;">{mem_pct:.0f}%</div>
+                            <div style="font-size: 0.75em; color: #888; margin-bottom: 8px;">{reserved_gb:.2f} GB / {total_gb:.1f} GB</div>
+                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, #2196F3 0%, #1976D2 100%); width: {mem_pct}%; transition: width 0.5s ease;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Details Card -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #FF9800;">
+                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory Details</div>
+                            <div style="font-size: 0.85em; color: #333; line-height: 1.6;">
+                                <div>🔵 Allocated: {allocated_gb:.2f} GB</div>
+                                <div>🟢 Free: {free_gb:.2f} GB</div>
+                                <div>🌡️ Temp: {temp}°C</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """)
+        else:
+            gpu_memory_display = mo.md("*CPU mode - no GPU tracking*")
+    except Exception as e:
+        gpu_memory_display = mo.callout(
+            mo.md(f"⚠️ Error reading GPU metrics: {str(e)}"),
+            kind="warn"
+        )
     
-    gpu_memory_data = get_gpu_memory()
-    
-    mo.vstack([
-        mo.md("### 📊 GPU Memory Usage"),
-        mo.ui.table(gpu_memory_data) if gpu_memory_data else mo.md("*CPU mode - no GPU memory tracking*")
-    ])
-    return get_gpu_memory, gpu_memory_data
+    gpu_memory_display
+    return gpu_memory_display,
 
 
 @app.cell
@@ -487,13 +576,14 @@ def __(
     ):
         try:
             # Initialize model and tokenizer (using small GPT-2 for demo)
-            mo.output.append(mo.md("**Step 1/6:** Loading GPT-2 model..."))
+            print("📥 Step 1/7: Loading GPT-2 model...")
             model_name = "gpt2"
             
             # Load tokenizer
             try:
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 tokenizer.pad_token = tokenizer.eos_token
+                print(f"  ✅ Tokenizer loaded")
             except Exception as e:
                 raise ImportError(
                     f"Failed to load tokenizer. Please ensure transformers is properly installed.\n"
@@ -507,6 +597,7 @@ def __(
                     model_name,
                     torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
                 ).to(device)
+                print(f"  ✅ Model loaded to {device}")
             except Exception as e:
                 raise ImportError(
                     f"Failed to load GPT-2 model. Please ensure transformers is properly installed.\n"
@@ -515,30 +606,32 @@ def __(
                 )
             
             # Inject LoRA
-            mo.output.append(mo.md("**Step 2/6:** Injecting LoRA layers..."))
+            print("\n🔧 Step 2/7: Injecting LoRA layers...")
             model, lora_params = inject_lora(model, rank=lora_rank.value)
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             
-            mo.output.append(mo.md(f"✅ LoRA injected: Training only {trainable_params:,} / {total_params:,} parameters ({100*trainable_params/total_params:.2f}%)"))
+            print(f"  ✅ LoRA injected: Training only {trainable_params:,} / {total_params:,} parameters ({100*trainable_params/total_params:.2f}%)")
             
             # Prepare dataset
-            mo.output.append(mo.md("**Step 3/6:** Preparing dataset..."))
+            print("\n📊 Step 3/7: Preparing dataset...")
             dataset = FineTuningDataset(tokenizer, num_samples=200)
             dataloader = DataLoader(
                 dataset,
                 batch_size=batch_size.value,
                 shuffle=True
             )
+            print(f"  ✅ Dataset ready: {len(dataset)} samples, {len(dataloader)} batches")
             
             # Setup optimizer
             optimizer = torch.optim.AdamW(
                 filter(lambda p: p.requires_grad, model.parameters()),
                 lr=learning_rate.value
             )
+            print(f"  ✅ Optimizer: AdamW with lr={learning_rate.value}")
             
             # Warmup run for GPU
-            mo.output.append(mo.md("**Step 4/6:** Warming up GPU..."))
+            print("\n🔥 Step 4/7: Warming up GPU...")
             model.train()
             _warmup_batch = next(iter(dataloader))
             _warmup_inputs = _warmup_batch['input_ids'][:1].to(device)
@@ -548,9 +641,10 @@ def __(
             if device.type == "cuda":
                 torch.cuda.synchronize()
             del _warmup_batch, _warmup_inputs, _warmup_mask, _warmup_labels, _
+            print("  ✅ GPU warmed up")
             
             # Training loop
-            mo.output.append(mo.md("**Step 5/6:** Training model..."))
+            print(f"\n🚀 Step 5/7: Training model for {num_epochs.value} epoch(s)...")
             _losses = []
             _times = []
             _epoch_stats = []
@@ -560,6 +654,7 @@ def __(
             for epoch in range(num_epochs.value):
                 _epoch_losses = []
                 _epoch_start = time.time()
+                print(f"\n  📍 Epoch {epoch+1}/{num_epochs.value}")
                 
                 for batch_idx, batch in enumerate(dataloader):
                     input_ids = batch['input_ids'].to(device)
@@ -597,6 +692,10 @@ def __(
                     _losses.append(loss.item())
                     _times.append(time.time() - _start_time)
                     
+                    # Print progress every 10 batches
+                    if (batch_idx + 1) % 10 == 0 or batch_idx == 0:
+                        print(f"    Batch {batch_idx+1}/{len(dataloader)}: Loss = {loss.item():.4f}")
+                    
                     # Sample GPU memory periodically
                     if batch_idx % 5 == 0 and device.type == "cuda":
                         _gpu_memory_samples.append({
@@ -611,12 +710,13 @@ def __(
                     'avg_loss': np.mean(_epoch_losses),
                     'time': _epoch_time
                 })
-                mo.output.append(mo.md(f"  Epoch {epoch+1}/{num_epochs.value}: Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s"))
+                print(f"  ✅ Epoch {epoch+1} complete: Avg Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s")
             
             _total_time = time.time() - _start_time
+            print(f"\n🎉 Training complete! Total time: {_total_time:.1f}s")
             
             # Generate multiple sample outputs
-            mo.output.append(mo.md("**Step 6/6:** Generating sample outputs..."))
+            print("\n💬 Step 6/7: Generating sample outputs...")
             model.eval()
             _sample_prompts = [
                 "Translate English to French: Hello",
@@ -626,7 +726,7 @@ def __(
             _generated_samples = []
             
             with torch.no_grad():
-                for prompt in _sample_prompts:
+                for i, prompt in enumerate(_sample_prompts, 1):
                     inputs = tokenizer(prompt, return_tensors="pt").to(device)
                     outputs = model.generate(
                         **inputs,
@@ -637,8 +737,9 @@ def __(
                     )
                     generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
                     _generated_samples.append({'prompt': prompt, 'output': generated_text})
+                    print(f"  Sample {i}/{len(_sample_prompts)}: Generated")
         
-            mo.output.append(mo.md("**Step 7/7:** Finalizing results..."))
+            print("\n🎯 Step 7/7: Finalizing results...")
             training_results = {
                 'losses': _losses,
                 'times': _times,
