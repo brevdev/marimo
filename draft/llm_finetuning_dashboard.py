@@ -759,6 +759,9 @@ def __(train_button, model_with_lora, tokenizer, batch_size, learning_rate, devi
         lr=learning_rate.value
     )
     
+    # Create GradScaler for FP16 training (critical for preventing NaN loss!)
+    scaler = torch.cuda.amp.GradScaler() if use_mixed_precision.value and device.type == "cuda" else None
+    
     # Warmup run for GPU
     model_with_lora.train()
     _warmup_batch = next(iter(dataloader))
@@ -775,11 +778,11 @@ def __(train_button, model_with_lora, tokenizer, batch_size, learning_rate, devi
         kind="success"
     )
     
-    return dataset, dataloader, optimizer
+    return dataset, dataloader, optimizer, scaler
 
 
 @app.cell
-def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mixed_precision, 
+def __(train_button, model_with_lora, dataloader, optimizer, scaler, num_epochs, use_mixed_precision, 
       device, torch, time, np, mo):
     """Step 5: Training loop"""
     mo.stop(not train_button.value)
@@ -806,7 +809,8 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
             labels = batch['labels'].to(device)
             
             # Forward pass
-            if use_mixed_precision.value and device.type == "cuda":
+            if use_mixed_precision.value and device.type == "cuda" and scaler is not None:
+                # Proper FP16 training with GradScaler
                 with torch.cuda.amp.autocast():
                     _outputs = model_with_lora(
                         input_ids=input_ids,
@@ -814,25 +818,41 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
                         labels=labels
                     )
                     loss = _outputs.loss
+                
+                # Backward pass with scaled gradients
+                optimizer.zero_grad()
+                scaler.scale(loss).backward()
+                
+                # Gradient clipping (unscale first for accurate clipping)
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    filter(lambda p: p.requires_grad, model_with_lora.parameters()), 
+                    max_norm=1.0
+                )
+                
+                # Optimizer step with scaler
+                scaler.step(optimizer)
+                scaler.update()
             else:
+                # FP32 training (no scaler needed)
                 _outputs = model_with_lora(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     labels=labels
                 )
                 loss = _outputs.loss
-            
-            # Backward pass
-            optimizer.zero_grad()
-            loss.backward()
-            
-            # Gradient clipping to prevent NaN (especially important for FP16)
-            torch.nn.utils.clip_grad_norm_(
-                filter(lambda p: p.requires_grad, model_with_lora.parameters()), 
-                max_norm=1.0
-            )
-            
-            optimizer.step()
+                
+                # Standard backward pass
+                optimizer.zero_grad()
+                loss.backward()
+                
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(
+                    filter(lambda p: p.requires_grad, model_with_lora.parameters()), 
+                    max_norm=1.0
+                )
+                
+                optimizer.step()
             
             # Synchronize for accurate timing
             if device.type == "cuda":
