@@ -76,6 +76,7 @@ def __():
 def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     """Auto-install transformers if missing"""
     transformers_install_msg = None
+    transformers_needs_restart = False
     
     if not TRANSFORMERS_AVAILABLE:
         print("🔄 Transformers not found - starting auto-installation...")
@@ -89,13 +90,18 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
             
             if result.returncode == 0:
                 print("✅ Transformers installed successfully!")
+                transformers_needs_restart = True
                 transformers_install_msg = mo.callout(
                     mo.md("""
                     ✅ **Transformers Installed Successfully!**
                     
-                    The library is now available. You can proceed with fine-tuning.
+                    **⚠️ ACTION REQUIRED:** The package was installed, but Python needs to be restarted to use it.
+                    
+                    **Please refresh this page now** to restart the kernel and enable the transformers library.
+                    
+                    After refreshing, you can click "Start Fine-Tuning" and it will work.
                     """),
-                    kind="success"
+                    kind="warn"
                 )
             else:
                 print(f"❌ Installation failed: {result.stderr[:200]}")
@@ -111,6 +117,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     ```bash
                     pip install transformers
                     ```
+                    
+                    Then refresh this page.
                     """),
                     kind="danger"
                 )
@@ -126,6 +134,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                 ```bash
                 pip install transformers
                 ```
+                
+                Then refresh this page.
                 """),
                 kind="warn"
             )
@@ -141,6 +151,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                 ```bash
                 pip install transformers
                 ```
+                
+                Then refresh this page.
                 """),
                 kind="danger"
             )
@@ -148,7 +160,7 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
         print("✅ Transformers library already available")
         transformers_install_msg = None
     
-    return transformers_install_msg,
+    return transformers_install_msg, transformers_needs_restart
 
 
 @app.cell
