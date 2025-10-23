@@ -244,14 +244,22 @@ def __(TRANSFORMERS_AVAILABLE):
     AutoModelForCausalLM = None
     AutoTokenizer = None
     get_linear_schedule_with_warmup = None
+    GPT2LMHeadModel = None
+    GPT2TokenizerFast = None
     
     try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+        from transformers import (
+            AutoModelForCausalLM, 
+            AutoTokenizer, 
+            get_linear_schedule_with_warmup,
+            GPT2LMHeadModel,
+            GPT2TokenizerFast
+        )
     except ImportError:
         # Fallback to None if still not available
         pass
     
-    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, GPT2LMHeadModel, GPT2TokenizerFast
 
 
 @app.cell
