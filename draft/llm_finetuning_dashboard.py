@@ -564,13 +564,14 @@ def __(nn, torch, Tuple):
             """Forward pass: x @ A @ B"""
             return (x @ self.lora_A @ self.lora_B) * self.scaling
     
-    def inject_lora(model: nn.Module, rank: int = 16) -> Tuple[nn.Module, int]:
+    def inject_lora(model: nn.Module, rank: int = 16) -> Tuple[nn.Module, int, List]:
         """Inject LoRA layers into model attention layers"""
         # FIRST: Freeze ALL model parameters
         for param in model.parameters():
             param.requires_grad = False
         
         lora_params = 0
+        trainable_params = []  # Collect LoRA parameters
         
         # THEN: Add LoRA layers and make them trainable
         for name, module in model.named_modules():
@@ -580,6 +581,11 @@ def __(nn, torch, Tuple):
                 
                 # Add LoRA layer
                 lora_layer = LoRALayer(in_features, out_features, rank=rank)
+                
+                # Store LoRA parameters for optimizer
+                trainable_params.extend([lora_layer.lora_A, lora_layer.lora_B])
+                
+                # Attach to module (for forward pass)
                 module._lora = lora_layer
                 lora_params += rank * (in_features + out_features)
                 
@@ -597,11 +603,8 @@ def __(nn, torch, Tuple):
                     return forward_with_lora
                 
                 module.forward = make_forward_with_lora(original_forward, lora_layer)
-                
-                # Original weights already frozen (done at start)
-                # LoRA parameters are automatically trainable (newly created)
         
-        return model, lora_params
+        return model, lora_params, trainable_params
     
     return LoRALayer, inject_lora
 
@@ -706,21 +709,21 @@ def __(train_button, model, lora_rank, inject_lora, mo):
     """Step 3: Inject LoRA layers"""
     mo.stop(not train_button.value)
     
-    model_with_lora, lora_params = inject_lora(model, rank=lora_rank.value)
+    model_with_lora, lora_params, lora_trainable_params = inject_lora(model, rank=lora_rank.value)
     total_params = sum(p.numel() for p in model_with_lora.parameters())
-    trainable_params = sum(p.numel() for p in model_with_lora.parameters() if p.requires_grad)
+    trainable_params_count = sum(p.numel() for p in lora_trainable_params)
     
     mo.callout(
-        mo.md(f"✅ **Step 3/7 Complete:** LoRA injected - Training only **{trainable_params:,} / {total_params:,}** parameters ({100*trainable_params/total_params:.2f}%)"),
+        mo.md(f"✅ **Step 3/7 Complete:** LoRA injected - Training only **{trainable_params_count:,} / {total_params:,}** parameters ({100*trainable_params_count/total_params:.2f}%)"),
         kind="success"
     )
     
-    return model_with_lora, total_params, trainable_params, lora_params
+    return model_with_lora, total_params, trainable_params_count, lora_params, lora_trainable_params
 
 
 @app.cell
 def __(train_button, model_with_lora, tokenizer, batch_size, learning_rate, device, torch, 
-      FineTuningDataset, DataLoader, mo):
+      FineTuningDataset, DataLoader, lora_trainable_params, mo):
     """Step 4: Prepare dataset and optimizer"""
     mo.stop(not train_button.value)
     
@@ -731,8 +734,9 @@ def __(train_button, model_with_lora, tokenizer, batch_size, learning_rate, devi
         shuffle=True
     )
     
+    # Use the explicitly collected LoRA parameters
     optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model_with_lora.parameters()),
+        lora_trainable_params,
         lr=learning_rate.value
     )
     
@@ -916,7 +920,7 @@ def __(train_button, generated_samples, mo):
 
 
 @app.cell
-def __(train_button, training_losses, training_times, total_training_time, total_params, trainable_params, lora_params,
+def __(train_button, training_losses, training_times, total_training_time, total_params, trainable_params_count, lora_params,
       epoch_stats, gpu_memory_samples, generated_samples, batch_size, np, torch, model_with_lora, tokenizer, mo):
     """Step 7: Finalize results"""
     mo.stop(not train_button.value)
@@ -926,7 +930,7 @@ def __(train_button, training_losses, training_times, total_training_time, total
         'times': training_times,
         'total_time': total_training_time,
         'total_params': total_params,
-        'trainable_params': trainable_params,
+        'trainable_params': trainable_params_count,
         'lora_params': lora_params,
         'final_loss': training_losses[-1],
         'avg_loss': np.mean(training_losses[-10:]),
