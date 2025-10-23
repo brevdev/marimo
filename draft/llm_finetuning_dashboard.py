@@ -625,14 +625,14 @@ def __(
     ):
         try:
             # Initialize model and tokenizer (using small GPT-2 for demo)
-            print("📥 Step 1/7: Loading GPT-2 model...")
+            print("📥 Step 1/7: Loading GPT-2 model...", flush=True)
             model_name = "gpt2"
             
             # Load tokenizer
             try:
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 tokenizer.pad_token = tokenizer.eos_token
-                print(f"  ✅ Tokenizer loaded")
+                print(f"  ✅ Tokenizer loaded", flush=True)
             except Exception as e:
                 raise ImportError(
                     f"Failed to load tokenizer. Please ensure transformers is properly installed.\n"
@@ -642,11 +642,15 @@ def __(
             
             # Load model
             try:
+                print(f"  📥 Downloading GPT-2 model (first time only, ~500MB)...", flush=True)
+                print(f"     This may take 1-2 minutes...", flush=True)
                 model = AutoModelForCausalLM.from_pretrained(
                     model_name,
-                    torch_dtype=torch.float16 if use_mixed_precision.value else torch.float32
-                ).to(device)
-                print(f"  ✅ Model loaded to {device}")
+                    dtype=torch.float16 if use_mixed_precision.value else torch.float32
+                )
+                print(f"  📦 Model downloaded, moving to {device}...", flush=True)
+                model = model.to(device)
+                print(f"  ✅ Model loaded to {device}", flush=True)
             except Exception as e:
                 raise ImportError(
                     f"Failed to load GPT-2 model. Please ensure transformers is properly installed.\n"
@@ -655,32 +659,32 @@ def __(
                 )
             
             # Inject LoRA
-            print("\n🔧 Step 2/7: Injecting LoRA layers...")
+            print("\n🔧 Step 2/7: Injecting LoRA layers...", flush=True)
             model, lora_params = inject_lora(model, rank=lora_rank.value)
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             
-            print(f"  ✅ LoRA injected: Training only {trainable_params:,} / {total_params:,} parameters ({100*trainable_params/total_params:.2f}%)")
+            print(f"  ✅ LoRA injected: Training only {trainable_params:,} / {total_params:,} parameters ({100*trainable_params/total_params:.2f}%)", flush=True)
             
             # Prepare dataset
-            print("\n📊 Step 3/7: Preparing dataset...")
+            print("\n📊 Step 3/7: Preparing dataset...", flush=True)
             dataset = FineTuningDataset(tokenizer, num_samples=200)
             dataloader = DataLoader(
                 dataset,
                 batch_size=batch_size.value,
                 shuffle=True
             )
-            print(f"  ✅ Dataset ready: {len(dataset)} samples, {len(dataloader)} batches")
+            print(f"  ✅ Dataset ready: {len(dataset)} samples, {len(dataloader)} batches", flush=True)
             
             # Setup optimizer
             optimizer = torch.optim.AdamW(
                 filter(lambda p: p.requires_grad, model.parameters()),
                 lr=learning_rate.value
             )
-            print(f"  ✅ Optimizer: AdamW with lr={learning_rate.value}")
+            print(f"  ✅ Optimizer: AdamW with lr={learning_rate.value}", flush=True)
             
             # Warmup run for GPU
-            print("\n🔥 Step 4/7: Warming up GPU...")
+            print("\n🔥 Step 4/7: Warming up GPU...", flush=True)
             model.train()
             _warmup_batch = next(iter(dataloader))
             _warmup_inputs = _warmup_batch['input_ids'][:1].to(device)
@@ -690,10 +694,10 @@ def __(
             if device.type == "cuda":
                 torch.cuda.synchronize()
             del _warmup_batch, _warmup_inputs, _warmup_mask, _warmup_labels, _
-            print("  ✅ GPU warmed up")
+            print("  ✅ GPU warmed up", flush=True)
             
             # Training loop
-            print(f"\n🚀 Step 5/7: Training model for {num_epochs.value} epoch(s)...")
+            print(f"\n🚀 Step 5/7: Training model for {num_epochs.value} epoch(s)...", flush=True)
             _losses = []
             _times = []
             _epoch_stats = []
@@ -703,7 +707,7 @@ def __(
             for epoch in range(num_epochs.value):
                 _epoch_losses = []
                 _epoch_start = time.time()
-                print(f"\n  📍 Epoch {epoch+1}/{num_epochs.value}")
+                print(f"\n  📍 Epoch {epoch+1}/{num_epochs.value}", flush=True)
                 
                 for batch_idx, batch in enumerate(dataloader):
                     input_ids = batch['input_ids'].to(device)
@@ -743,7 +747,7 @@ def __(
                     
                     # Print progress every 10 batches
                     if (batch_idx + 1) % 10 == 0 or batch_idx == 0:
-                        print(f"    Batch {batch_idx+1}/{len(dataloader)}: Loss = {loss.item():.4f}")
+                        print(f"    Batch {batch_idx+1}/{len(dataloader)}: Loss = {loss.item():.4f}", flush=True)
                     
                     # Sample GPU memory periodically
                     if batch_idx % 5 == 0 and device.type == "cuda":
@@ -759,13 +763,13 @@ def __(
                     'avg_loss': np.mean(_epoch_losses),
                     'time': _epoch_time
                 })
-                print(f"  ✅ Epoch {epoch+1} complete: Avg Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s")
+                print(f"  ✅ Epoch {epoch+1} complete: Avg Loss = {np.mean(_epoch_losses):.4f}, Time = {_epoch_time:.1f}s", flush=True)
             
             _total_time = time.time() - _start_time
-            print(f"\n🎉 Training complete! Total time: {_total_time:.1f}s")
+            print(f"\n🎉 Training complete! Total time: {_total_time:.1f}s", flush=True)
             
             # Generate multiple sample outputs
-            print("\n💬 Step 6/7: Generating sample outputs...")
+            print("\n💬 Step 6/7: Generating sample outputs...", flush=True)
             model.eval()
             _sample_prompts = [
                 "Translate English to French: Hello",
@@ -786,9 +790,9 @@ def __(
                     )
                     generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
                     _generated_samples.append({'prompt': prompt, 'output': generated_text})
-                    print(f"  Sample {_sample_idx}/{len(_sample_prompts)}: Generated")
+                    print(f"  Sample {_sample_idx}/{len(_sample_prompts)}: Generated", flush=True)
         
-            print("\n🎯 Step 7/7: Finalizing results...")
+            print("\n🎯 Step 7/7: Finalizing results...", flush=True)
             training_results = {
                 'losses': _losses,
                 'times': _times,
