@@ -237,19 +237,15 @@ def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
     AutoModelForCausalLM = None
     AutoTokenizer = None
     get_linear_schedule_with_warmup = None
-    GPT2LMHeadModel = None
-    GPT2TokenizerFast = None
     
     if TRANSFORMERS_AVAILABLE:
         try:
             from transformers import (
                 AutoModelForCausalLM, 
                 AutoTokenizer, 
-                get_linear_schedule_with_warmup,
-                GPT2LMHeadModel,
-                GPT2TokenizerFast
+                get_linear_schedule_with_warmup
             )
-            print("✅ Successfully imported all transformers classes")
+            print("✅ Successfully imported transformers classes")
         except ImportError as e:
             # Fallback to None if still not available
             print(f"⚠️ Import failed: {str(e)[:150]}")
@@ -260,16 +256,14 @@ def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
             from transformers import (
                 AutoModelForCausalLM, 
                 AutoTokenizer, 
-                get_linear_schedule_with_warmup,
-                GPT2LMHeadModel,
-                GPT2TokenizerFast
+                get_linear_schedule_with_warmup
             )
             print("✅ Successfully imported transformers classes (fresh install)")
         except ImportError as e:
             print(f"⚠️ Transformers still not available: {str(e)[:100]}")
             pass
     
-    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, GPT2LMHeadModel, GPT2TokenizerFast
+    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
 
 
 @app.cell
