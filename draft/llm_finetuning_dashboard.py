@@ -582,13 +582,14 @@ def __(nn, torch, Tuple):
             is_attention_layer = any(x in name for x in ['c_attn', 'c_proj', 'q_proj', 'v_proj', 'k_proj'])
             
             if is_linear_or_conv1d and is_attention_layer:
-                # Get dimensions (Conv1D and Linear have different attribute names)
+                # Get dimensions (Conv1D and Linear have different weight layouts)
                 if type(module).__name__ == 'Conv1D':
-                    # GPT-2 Conv1D: weight shape is (out_features, in_features)
-                    in_features = module.weight.shape[1]
-                    out_features = module.weight.shape[0]
+                    # GPT-2 Conv1D: weight shape is (in_features, out_features)
+                    # This is OPPOSITE of nn.Linear!
+                    in_features = module.weight.shape[0]
+                    out_features = module.weight.shape[1]
                 else:
-                    # nn.Linear
+                    # nn.Linear: weight shape is (out_features, in_features)
                     in_features = module.in_features
                     out_features = module.out_features
                 
