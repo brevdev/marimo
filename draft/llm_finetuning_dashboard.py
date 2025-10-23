@@ -196,14 +196,14 @@ def __(mo, GPUTIL_AVAILABLE, subprocess):
     if not gputil_available:
         with mo.status.spinner(title="📦 Installing GPUtil...", subtitle="Quick install for enhanced GPU monitoring"):
             try:
-                result = subprocess.run(
+                gputil_result = subprocess.run(
                     ["pip", "install", "gputil"],
                     capture_output=True,
                     text=True,
                     timeout=60
                 )
                 
-                if result.returncode == 0:
+                if gputil_result.returncode == 0:
                     # Try importing the newly installed GPUtil
                     try:
                         import GPUtil as gputil_module
@@ -230,6 +230,9 @@ def __(mo, GPUTIL_AVAILABLE, subprocess):
                     mo.md(f"ℹ️ **Running without GPUtil** - basic GPU monitoring active. Install manually: `pip install gputil`"),
                     kind="info"
                 )
+    else:
+        # GPUtil was already available, don't show a message
+        gputil_install_msg = None
     
     return gputil_available, gputil_module, gputil_install_msg,
 
@@ -772,7 +775,7 @@ def __(
             _generated_samples = []
             
             with torch.no_grad():
-                for i, prompt in enumerate(_sample_prompts, 1):
+                for _sample_idx, prompt in enumerate(_sample_prompts, 1):
                     inputs = tokenizer(prompt, return_tensors="pt").to(device)
                     outputs = model.generate(
                         **inputs,
@@ -783,7 +786,7 @@ def __(
                     )
                     generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
                     _generated_samples.append({'prompt': prompt, 'output': generated_text})
-                    print(f"  Sample {i}/{len(_sample_prompts)}: Generated")
+                    print(f"  Sample {_sample_idx}/{len(_sample_prompts)}: Generated")
         
             print("\n🎯 Step 7/7: Finalizing results...")
             training_results = {
@@ -1039,14 +1042,14 @@ def __(training_results, mo, go, pd, np):
         
         # 5. Generated samples display
         samples_display = []
-        for i, sample in enumerate(training_results['generated_samples'], 1):
+        for _i, sample in enumerate(training_results['generated_samples'], 1):
             samples_display.append(
                 mo.callout(
                     mo.vstack([
                         mo.md(f"**Prompt:** {sample['prompt']}"),
                         mo.md(f"**Output:** {sample['output']}")
                     ]),
-                    kind="success" if i == 1 else "neutral"
+                    kind="success" if _i == 1 else "neutral"
                 )
             )
         
