@@ -9,10 +9,11 @@ NVIDIA GPUs for data manipulation, aggregation, and analysis.
 
 Features:
 - Interactive dataset size selection (1K to 100M rows)
-- Real-time performance comparison across multiple operations
-- Speedup visualization with interactive charts
-- Memory usage tracking for both CPU and GPU
-- Multiple operation types: filtering, groupby, joins, sorting
+- Performance comparison across multiple operations (filter, groupby, join, sort)
+- Speedup visualization with interactive Plotly charts
+- GPU performance timeline charts (utilization, memory, temperature over time)
+- Multi-GPU monitoring and support
+- Console progress output during benchmark execution
 
 Requirements:
 - NVIDIA GPU with 4GB+ VRAM (works on all NVIDIA datacenter GPUs)
@@ -290,145 +291,9 @@ def __(torch, mo, subprocess):
 
 @app.cell
 def __(mo):
-    """GPU Metrics Section Header"""
-    mo.md("## 📊 Real-time GPU Metrics")
+    """Benchmark Results Section Header"""
+    mo.md("## 📊 Benchmark Results")
     return
-
-
-@app.cell
-def __(mo):
-    """GPU Metrics - Auto-refresh trigger"""
-    # Auto-refresh at 2s - smooth CSS transitions make it feel seamless
-    gpu_refresh = mo.ui.refresh(default_interval="2s")
-    
-    # Display but make invisible (marimo requires it to be displayed to work)
-    mo.Html(f"""
-    <div style="height: 0; overflow: hidden; opacity: 0; pointer-events: none;">
-        {gpu_refresh}
-    </div>
-    """)
-    return gpu_refresh,
-
-
-@app.cell
-def __(mo, device, torch, gpu_refresh, time):
-    """Real-time GPU Metrics Display with Beautiful Cards"""
-    # Trigger on auto-refresh
-    _ = gpu_refresh.value
-    _update_time = time.strftime("%H:%M:%S")
-    
-    try:
-        if device.type != "cuda":
-            gpu_display = mo.md("*No GPU detected - running in CPU mode*")
-        else:
-            # Try to use GPUtil for rich metrics
-            try:
-                import GPUtil as _GPUtil_metrics
-                _gpus_metrics = _GPUtil_metrics.getGPUs()
-                
-                # Create modern card-based display
-                gpu_cards_html = []
-                
-                for _gpu_metrics in _gpus_metrics:
-                    util_pct = round(_gpu_metrics.load * 100, 1)
-                    mem_used_gb = _gpu_metrics.memoryUsed / 1024
-                    mem_total_gb = _gpu_metrics.memoryTotal / 1024
-                    mem_pct = round((_gpu_metrics.memoryUsed / _gpu_metrics.memoryTotal) * 100, 1)
-                    temp = _gpu_metrics.temperature
-                    
-                    card_html = f"""
-                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 15px 0; font-size: 1.1em;">GPU {_gpu_metrics.id}: {_gpu_metrics.name}</h4>
-                        
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-                            <!-- Utilization Card -->
-                            <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #4CAF50;">
-                                <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Utilization</div>
-                                <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 8px;">{util_pct}%</div>
-                                <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                    <div style="height: 100%; background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%); width: {util_pct}%; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                                </div>
-                            </div>
-                            
-                            <!-- Memory Card -->
-                            <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
-                                <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Memory</div>
-                                <div style="font-size: 1.8em; font-weight: bold; color: #333; margin-bottom: 4px;">{mem_pct}%</div>
-                                <div style="font-size: 0.75em; color: #888; margin-bottom: 8px;">{mem_used_gb:.1f} GB / {mem_total_gb:.1f} GB</div>
-                                <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                    <div style="height: 100%; background: linear-gradient(90deg, #2196F3 0%, #1976D2 100%); width: {mem_pct}%; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                                </div>
-                            </div>
-                            
-                            <!-- Temperature Card -->
-                            <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #FF9800;">
-                                <div style="font-size: 0.85em; color: #666; margin-bottom: 5px; font-weight: 500;">Temperature</div>
-                                <div style="font-size: 1.8em; font-weight: bold; color: #333;">{temp}°C</div>
-                            </div>
-                        </div>
-                    </div>
-                    """
-                    gpu_cards_html.append(card_html)
-                
-                # Combine all GPU cards with update time
-                all_cards = "\n".join(gpu_cards_html)
-                
-                gpu_display = mo.Html(f"""
-                <div style="position: relative;">
-                    <div style="text-align: right; color: #888; font-size: 0.85em; margin-bottom: 10px; font-family: monospace;">
-                        ⏱️ Last updated: {_update_time}
-                    </div>
-                    <div style="display: grid; gap: 15px; animation: fadeIn 0.3s ease-in;">
-                        {all_cards}
-                    </div>
-                </div>
-                
-                <style>
-                    @keyframes fadeIn {{
-                        from {{ opacity: 0.7; transform: translateY(-5px); }}
-                        to {{ opacity: 1; transform: translateY(0); }}
-                    }}
-                </style>
-                """)
-            except ImportError:
-                # Fallback to simple PyTorch metrics
-                allocated = torch.cuda.memory_allocated(0) / 1024**3
-                reserved = torch.cuda.memory_reserved(0) / 1024**3
-                total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                gpu_name = torch.cuda.get_device_name(0)
-                
-                mem_pct = round((reserved / total) * 100, 1)
-                
-                gpu_display = mo.Html(f"""
-                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9;">
-                    <h4 style="margin: 0 0 15px 0;">{gpu_name}</h4>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
-                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px;">Memory Allocated</div>
-                            <div style="font-size: 1.5em; font-weight: bold;">{allocated:.2f} GB</div>
-                        </div>
-                        <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #2196F3;">
-                            <div style="font-size: 0.85em; color: #666; margin-bottom: 5px;">Memory Reserved</div>
-                            <div style="font-size: 1.5em; font-weight: bold;">{reserved:.2f} GB / {total:.2f} GB</div>
-                            <div style="height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 8px;">
-                                <div style="height: 100%; background: #2196F3; width: {mem_pct}%; transition: all 0.6s;"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="text-align: right; color: #888; font-size: 0.85em; margin-top: 10px;">
-                        ⏱️ {_update_time}
-                    </div>
-                </div>
-                """)
-                
-    except Exception as e:
-        gpu_display = mo.callout(
-            mo.md(f"Error reading GPU metrics: {str(e)}"),
-            kind="warn"
-        )
-    
-    gpu_display
-    return gpu_display,
 
 
 @app.cell
@@ -540,10 +405,15 @@ def __(
     
     # Check if button was clicked (value increments on each click)
     if run_benchmark_btn.value > 0:
-        print(f"🚀 Starting benchmark with {len(operations.value)} operations on {10**dataset_size.value:,} rows...")
-        print(f"Operations: {', '.join(operations.value)}")
-        print(f"Mode: {mode_toggle.value}")
-        print("=" * 60)
+        print("=" * 80)
+        print(f"🚀 BENCHMARK STARTING")
+        print("=" * 80)
+        print(f"📊 Dataset: {10**dataset_size.value:,} rows")
+        print(f"🔧 Operations: {', '.join(operations.value)}")
+        print(f"⚙️  Mode: {mode_toggle.value}")
+        print(f"🕐 Estimated time: 10-60 seconds (depending on dataset size)")
+        print("=" * 80)
+        print("\n⏳ Running benchmark... (watch for progress below)\n")
         
         # Set random seeds for reproducibility
         np.random.seed(42)
@@ -789,6 +659,13 @@ def __(
                     print("✅ Cleaned up GPU memory")
                 except Exception as e:
                     print(f"⚠️  GPU cleanup warning: {e}")
+            
+            # Final completion message
+            print("\n" + "=" * 80)
+            print("🎉 BENCHMARK COMPLETE!")
+            print("=" * 80)
+            print("📊 Results and GPU timeline charts are displayed below.")
+            print("=" * 80 + "\n")
         
         except torch.cuda.OutOfMemoryError:
             # Handle GPU OOM explicitly
