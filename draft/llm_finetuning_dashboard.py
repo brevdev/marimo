@@ -858,16 +858,25 @@ def __(train_button, model_with_lora, tokenizer, device, torch, mo):
     
     with torch.no_grad():
         for prompt in _sample_prompts:
-            inputs = tokenizer(prompt, return_tensors="pt").to(device)
-            _gen_outputs = model_with_lora.generate(
-                **inputs,
-                max_length=50,
-                num_return_sequences=1,
-                temperature=0.7,
-                do_sample=True
-            )
-            generated_text = tokenizer.decode(_gen_outputs[0], skip_special_tokens=True)
-            _generated_samples.append({'prompt': prompt, 'output': generated_text})
+            try:
+                inputs = tokenizer(prompt, return_tensors="pt").to(device)
+                # Use greedy decoding (more stable than sampling after FP16 training)
+                _gen_outputs = model_with_lora.generate(
+                    **inputs,
+                    max_length=50,
+                    num_return_sequences=1,
+                    do_sample=False,  # Greedy decoding - more stable
+                    pad_token_id=tokenizer.eos_token_id
+                )
+                generated_text = tokenizer.decode(_gen_outputs[0], skip_special_tokens=True)
+                _generated_samples.append({'prompt': prompt, 'output': generated_text})
+            except Exception as e:
+                # If generation fails, record the error
+                _generated_samples.append({
+                    'prompt': prompt, 
+                    'output': f"[Generation failed: {str(e)[:50]}]"
+                })
+                print(f"⚠️ Generation failed for prompt '{prompt[:30]}...': {str(e)[:100]}")
     
     mo.callout(
         mo.md(f"✅ **Step 6/7 Complete:** Generated **{len(_generated_samples)} samples**"),
