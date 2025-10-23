@@ -846,7 +846,7 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
                 elif _gpu_util >= 50:
                     _perf_note = "✅ GPU is significantly faster! Try 10M-100M rows to push GPU to 100% utilization."
                 else:
-                    _perf_note = "✅ GPU is faster, but only using {_gpu_util:.0f}% - increase dataset size for more speedup."
+                    _perf_note = f"✅ GPU is faster, but only using {_gpu_util:.0f}% - increase dataset size for more speedup."
             elif avg_speedup >= 1:
                 _perf_kind = "info"
                 _perf_note = "💡 GPU shows modest gains. Increase dataset size (10M+ rows) for dramatic speedup."
