@@ -1008,8 +1008,6 @@ def __(train_button, training_results, mo, go, pd, np):
     mo.stop(not train_button.value)
     
     # Create comprehensive visualizations
-    visualization_output = None
-    
     if 'error' in training_results:
         error_msg = f"**Training Error**: {training_results['error']}"
         if 'suggestion' in training_results:
@@ -1017,7 +1015,8 @@ def __(train_button, training_results, mo, go, pd, np):
         if 'error_type' in training_results:
             error_msg += f"\n\n*Error type: {training_results['error_type']}*"
         
-        visualization_output = mo.callout(
+        # Display error
+        mo.callout(
             mo.md(error_msg),
             kind="danger"
         )
@@ -1212,8 +1211,8 @@ def __(train_button, training_results, mo, go, pd, np):
             template='plotly_white'
         )
         
-        # Assemble the dashboard
-        visualization_output = mo.vstack([
+        # Assemble and display the dashboard
+        mo.vstack([
             mo.md("# ✅ Training Complete!"),
             mo.md("---"),
             
@@ -1255,8 +1254,6 @@ def __(train_button, training_results, mo, go, pd, np):
                 kind="info"
             )
         ])
-    
-    return visualization_output
 
 
 @app.cell
