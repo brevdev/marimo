@@ -83,7 +83,7 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
             subtitle="First-time setup - this will take 1-2 minutes"
         ):
             try:
-                mo.output.append(mo.md("🔄 **Auto-installing transformers library...**"))
+                print("🔄 Auto-installing transformers library...")
                 
                 result = subprocess.run(
                     ["pip", "install", "--upgrade", "transformers"],
@@ -176,6 +176,65 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
 
 
 @app.cell
+def __(mo, GPUTIL_AVAILABLE, subprocess):
+    """Auto-install GPUtil for enhanced GPU monitoring"""
+    
+    gputil_module = None
+    gputil_available = False
+    gputil_install_msg = None
+    
+    # Try importing GPUtil first
+    try:
+        import GPUtil as gputil_module
+        gputil_available = True
+        print("✅ GPUtil already available")
+    except ImportError:
+        gputil_module = None
+        gputil_available = False
+        print("⚠️ GPUtil not found, installing for enhanced GPU monitoring...")
+    
+    if not gputil_available:
+        with mo.status.spinner(title="📦 Installing GPUtil...", subtitle="Quick install for enhanced GPU monitoring"):
+            try:
+                result = subprocess.run(
+                    ["pip", "install", "gputil"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if result.returncode == 0:
+                    # Try importing the newly installed GPUtil
+                    try:
+                        import GPUtil as gputil_module
+                        gputil_available = True
+                        gputil_install_msg = mo.callout(
+                            mo.md("✅ **GPUtil installed!** Enhanced GPU monitoring now active (utilization %, temperature)."),
+                            kind="success"
+                        )
+                        print("✅ GPUtil installed and imported successfully")
+                    except ImportError:
+                        gputil_available = False
+                        gputil_module = None
+                        gputil_install_msg = mo.callout(
+                            mo.md("✅ **GPUtil installed!** Restart notebook for full monitoring features."),
+                            kind="info"
+                        )
+                else:
+                    gputil_install_msg = mo.callout(
+                        mo.md("⚠️ **GPUtil install skipped**. Basic GPU monitoring still available."),
+                        kind="warn"
+                    )
+            except Exception as e:
+                gputil_install_msg = mo.callout(
+                    mo.md(f"ℹ️ **Running without GPUtil** - basic GPU monitoring active. Install manually: `pip install gputil`"),
+                    kind="info"
+                )
+    
+    return gputil_available, gputil_module, gputil_install_msg,
+
+
+@app.cell
 def __(TRANSFORMERS_AVAILABLE):
     """Import transformers after check - always try fresh import"""
     # Always attempt fresh import (in case it was just installed)
@@ -193,25 +252,28 @@ def __(TRANSFORMERS_AVAILABLE):
 
 
 @app.cell
-def __(mo, TRANSFORMERS_VERSION):
+def __(mo, TRANSFORMERS_VERSION, gputil_install_msg):
     """Title and description"""
     version_info = f" (transformers v{TRANSFORMERS_VERSION})" if TRANSFORMERS_VERSION else ""
     
-    mo.md(
-        f"""
-        # 🧠 Interactive LLM Fine-Tuning Dashboard{version_info}
-        
-        **Fine-tune large language models** with LoRA (Low-Rank Adaptation) and monitor 
-        training progress in real-time. This notebook demonstrates efficient fine-tuning
-        on NVIDIA GPUs using parameter-efficient methods.
-        
-        **What is LoRA?** LoRA freezes pretrained model weights and injects trainable 
-        rank decomposition matrices, reducing trainable parameters by 10,000x while 
-        maintaining quality.
-        
-        ## ⚙️ Training Configuration
-        """
-    )
+    mo.vstack([
+        mo.md(
+            f"""
+            # 🧠 Interactive LLM Fine-Tuning Dashboard{version_info}
+            
+            **Fine-tune large language models** with LoRA (Low-Rank Adaptation) and monitor 
+            training progress in real-time. This notebook demonstrates efficient fine-tuning
+            on NVIDIA GPUs using parameter-efficient methods.
+            
+            **What is LoRA?** LoRA freezes pretrained model weights and injects trainable 
+            rank decomposition matrices, reducing trainable parameters by 10,000x while 
+            maintaining quality.
+            
+            ## ⚙️ Training Configuration
+            """
+        ),
+        gputil_install_msg if gputil_install_msg else mo.md("")
+    ])
     return
 
 
@@ -317,37 +379,21 @@ def __(torch, mo, subprocess, Dict):
 
 
 @app.cell
-def __(mo, GPUTIL_AVAILABLE):
+def __(mo, gputil_install_msg):
     """GPU Memory Monitor - Auto-refreshing"""
-    
-    # Show GPUtil installation suggestion if not available
-    _gputil_msg = None
-    if not GPUTIL_AVAILABLE:
-        _gputil_msg = mo.callout(
-            mo.md("""
-            💡 **Enhanced GPU monitoring available!**
-            
-            Install GPUtil for real-time GPU utilization and temperature:
-            ```bash
-            pip install gputil
-            ```
-            Then restart the notebook for full monitoring features.
-            """),
-            kind="info"
-        )
     
     gpu_memory_refresh = mo.ui.refresh(default_interval="2s")
     
     mo.vstack([
         mo.md("### 📊 GPU Monitoring (Live)"),
-        _gputil_msg if _gputil_msg else mo.md(""),
+        gputil_install_msg if gputil_install_msg else mo.md(""),
         gpu_memory_refresh
     ])
     return gpu_memory_refresh,
 
 
 @app.cell
-def __(mo, device, torch, gpu_memory_refresh, GPUtil, GPUTIL_AVAILABLE):
+def __(mo, device, torch, gpu_memory_refresh, gputil_module, gputil_available):
     """GPU Memory Display with visual cards"""
     # Trigger refresh
     _refresh_trigger = gpu_memory_refresh.value
@@ -366,9 +412,9 @@ def __(mo, device, torch, gpu_memory_refresh, GPUtil, GPUTIL_AVAILABLE):
             # Try to get GPU utilization from GPUtil
             util_pct = 0
             temp = "N/A"
-            if GPUTIL_AVAILABLE and GPUtil is not None:
+            if gputil_available and gputil_module is not None:
                 try:
-                    gpus = GPUtil.getGPUs()
+                    gpus = gputil_module.getGPUs()
                     if gpus and len(gpus) > 0:
                         gpu = gpus[0]
                         util_pct = int(gpu.load * 100) if gpu.load is not None else 0
