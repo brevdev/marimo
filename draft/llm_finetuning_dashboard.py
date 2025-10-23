@@ -575,7 +575,13 @@ def __(nn, torch, Tuple):
         
         # THEN: Add LoRA layers and make them trainable
         for name, module in model.named_modules():
-            if isinstance(module, nn.Linear) and any(x in name for x in ['q_proj', 'v_proj', 'k_proj']):
+            # GPT-2 uses Conv1D for attention, LLaMA uses Linear
+            # GPT-2: c_attn (combined QKV), c_proj (output)
+            # LLaMA: q_proj, v_proj, k_proj
+            is_linear_or_conv1d = isinstance(module, nn.Linear) or type(module).__name__ == 'Conv1D'
+            is_attention_layer = any(x in name for x in ['c_attn', 'c_proj', 'q_proj', 'v_proj', 'k_proj'])
+            
+            if is_linear_or_conv1d and is_attention_layer:
                 in_features = module.in_features
                 out_features = module.out_features
                 
