@@ -47,16 +47,14 @@ def __():
     from torch.utils.data import Dataset, DataLoader
     import json
     
-    # Check for transformers library - try to import the actual classes we need
+    # Check for transformers library
     TRANSFORMERS_AVAILABLE = False
     TRANSFORMERS_VERSION = None
     try:
         import transformers
-        # Actually try to import the classes we need, not just the package
-        from transformers import AutoTokenizer, AutoModelForCausalLM
         TRANSFORMERS_AVAILABLE = True
         TRANSFORMERS_VERSION = transformers.__version__
-        print(f"✅ Transformers v{TRANSFORMERS_VERSION} - all required classes available")
+        print(f"✅ Transformers v{TRANSFORMERS_VERSION} package available")
     except ImportError as e:
         TRANSFORMERS_AVAILABLE = False
         TRANSFORMERS_VERSION = None
