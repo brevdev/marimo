@@ -561,8 +561,16 @@ def __(nn, torch, Tuple):
             self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
         
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            """Forward pass: x @ A @ B"""
-            return (x @ self.lora_A @ self.lora_B) * self.scaling
+            """Forward pass: x @ A @ B (handles mixed precision)"""
+            # Store original dtype for mixed precision training
+            original_dtype = x.dtype
+            
+            # Cast to FP32 for LoRA computation (parameters are FP32)
+            x_fp32 = x.to(torch.float32)
+            result = (x_fp32 @ self.lora_A @ self.lora_B) * self.scaling
+            
+            # Cast back to original dtype (FP16 if model is FP16)
+            return result.to(original_dtype)
     
     def inject_lora(model: nn.Module, rank: int = 16) -> Tuple[nn.Module, int, List]:
         """Inject LoRA layers into model attention layers"""
@@ -593,13 +601,14 @@ def __(nn, torch, Tuple):
                     in_features = module.in_features
                     out_features = module.out_features
                 
-                # Add LoRA layer and move to same device/dtype as module
+                # Add LoRA layer and move to same device as module
                 lora_layer = LoRALayer(in_features, out_features, rank=rank)
                 
-                # Move LoRA to same device AND dtype as the module
-                # (important for FP16 training!)
-                if hasattr(module.weight, 'device') and hasattr(module.weight, 'dtype'):
-                    lora_layer = lora_layer.to(device=module.weight.device, dtype=module.weight.dtype)
+                # Move LoRA to same device as the module
+                # Keep LoRA parameters in FP32 (even if model is FP16)
+                # This is standard practice for mixed precision training!
+                if hasattr(module.weight, 'device'):
+                    lora_layer = lora_layer.to(device=module.weight.device, dtype=torch.float32)
                 
                 # Store LoRA parameters for optimizer
                 trainable_params.extend([lora_layer.lora_A, lora_layer.lora_B])
