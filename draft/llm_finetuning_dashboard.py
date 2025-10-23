@@ -592,8 +592,12 @@ def __(nn, torch, Tuple):
                     in_features = module.in_features
                     out_features = module.out_features
                 
-                # Add LoRA layer
+                # Add LoRA layer and move to same device as module
                 lora_layer = LoRALayer(in_features, out_features, rank=rank)
+                
+                # Move LoRA to same device as the module (CPU or CUDA)
+                if hasattr(module.weight, 'device'):
+                    lora_layer = lora_layer.to(module.weight.device)
                 
                 # Store LoRA parameters for optimizer
                 trainable_params.extend([lora_layer.lora_A, lora_layer.lora_B])
