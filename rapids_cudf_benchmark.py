@@ -195,113 +195,6 @@ def __(mo, cudf_available):
 
 
 @app.cell
-def __(mo, dataset_size, operations, mode_toggle, cudf_available):
-    """Display benchmark controls (without run button - that comes after education)"""
-    mo.vstack([
-        mo.md("## ⚙️ Benchmark Configuration"),
-        mo.hstack([dataset_size, operations], justify="start"),
-        mo.hstack([mode_toggle], justify="start"),
-        mo.md(f"**Dataset will have**: {10**dataset_size.value:,} rows"),
-        mo.callout(
-            mo.md(f"""
-            **Mode**: {mode_toggle.value}
-            
-            {'✅ cuDF available - you can compare CPU vs GPU!' if cudf_available else '⚠️ cuDF not installed - running CPU-only benchmarks'}
-            
-            {'💡 **Pro tip**: Try 10M-100M rows (slider position 7-8) to push GPU to 100% utilization and see 20-50x speedup!' if cudf_available else '💡 Restart the notebook after cuDF installs!'}
-            """),
-            kind="info" if cudf_available else "warn"
-        )
-    ])
-    return
-
-
-@app.cell
-def __(mo):
-    """Educational: Understanding Benchmark Operations"""
-    mo.md("""
----
-
-## 🔬 Understanding the Benchmark Operations
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
-
-### Filter Operation
-**What it does**: Select rows meeting a condition (e.g., `value > 0.5`)
-
-**Why it's fast on GPU:**
-- **Parallel comparison**: GPU checks all rows simultaneously
-- **Predicate evaluation**: Optimized CUDA kernels for comparisons
-- **Memory coalescing**: Sequential memory access pattern
-- **Result**: 10-20x speedup on large datasets
-
-**CPU vs GPU difference:**
-- CPU: Loop through rows, check condition (sequential)
-- GPU: All cores check different rows at once (parallel)
-
-### GroupBy-Aggregation
-**What it does**: Group rows by category, compute statistics (e.g., mean per group)
-
-**Why it's challenging:**
-- **Irregular memory access**: Groups aren't contiguous in memory
-- **Synchronization**: Need to combine results from different groups
-- **Variable group sizes**: Some groups have 10 rows, others have 1M
-
-**Why GPU excels here:**
-- **Hash-based grouping**: Parallel hash computation
-- **Atomic operations**: GPU hardware supports atomic adds (safe parallel updates)
-- **Two-phase algorithm**: First count group sizes, then aggregate
-- **Result**: 20-50x speedup on datasets with many groups
-
-**This is where GPUs shine brightest!**
-
-### Join Operation
-**What it does**: Combine two dataframes based on common key
-
-**Why it's memory-intensive:**
-- **Build hash table**: First dataframe → hash table (O(n) space)
-- **Probe hash table**: Second dataframe lookups (O(m) time)
-- **Output materialization**: Create result dataframe
-
-**GPU advantages:**
-- **Parallel hash table build**: All rows hashed at once
-- **High memory bandwidth**: 900 GB/s vs CPU's 50 GB/s
-- **Parallel probing**: All lookups happen simultaneously
-- **Result**: 15-40x speedup on large joins
-
-**Why this matters for data science:**
-- Joins are ubiquitous in data pipelines
-- Often the bottleneck in ETL workflows
-- GPU acceleration makes interactive analysis possible
-
-### Sort Operation
-**What it does**: Order rows by column value
-
-**Why sorting is hard to parallelize:**
-- **Dependencies**: Can't sort independently (results affect each other)
-- **Comparison-based**: Need O(n log n) comparisons
-- **Cache-unfriendly**: Random memory access patterns
-
-**GPU sorting strategy:**
-- **Radix sort**: Digit-by-digit sorting (GPU-friendly)
-- **Merge sort**: Parallel merge of sorted chunks
-- **Bitonic sort**: Network of compare-swap operations
-- **Result**: 5-15x speedup (lower than other ops due to synchronization)
-
-**Why speedup is lower:**
-- Sorting has more dependencies than other operations
-- More GPU synchronization points required
-- Memory access patterns less optimal
-
-</details>
-
----
-    """)
-    return
-
-
-@app.cell
 def __(torch, mo, subprocess):
     """GPU Detection"""
     
@@ -376,14 +269,11 @@ def __(torch, mo, subprocess):
 @app.cell
 def __(mo):
     """Educational: Why GPU-Accelerated DataFrames?"""
-    mo.md("""
----
-
-## 💡 Why GPU-Accelerated DataFrames?
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
-
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 💡 Why GPU-Accelerated DataFrames?"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
 ### The Problem with Traditional Data Processing
 - CPUs process data **sequentially** (one row at a time, even with multiple cores)
 - Moving data between CPU cores is slow due to memory bandwidth limits
@@ -416,90 +306,113 @@ def __(mo):
 - Data no longer fits in CPU cache
 - GPU's parallelism overcomes overhead
 - 10-50x speedups become common
-
-</details>
-
----
-    """)
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
 @app.cell
-def __(mo, run_benchmark_btn):
-    """Benchmark Results Section Header (only after benchmark runs)"""
-    # Only show this header after user has clicked the run button
-    mo.stop(run_benchmark_btn.value == 0, mo.md(""))
-    
-    mo.md("## 📊 Benchmark Results")
+def __(mo, dataset_size, operations, mode_toggle, cudf_available):
+    """Display benchmark controls (without run button - that comes after education)"""
+    mo.vstack([
+        mo.md("## ⚙️ Benchmark Configuration"),
+        mo.hstack([dataset_size, operations], justify="start"),
+        mo.hstack([mode_toggle], justify="start"),
+        mo.md(f"**Dataset will have**: {10**dataset_size.value:,} rows"),
+        mo.callout(
+            mo.md(f"""
+            **Mode**: {mode_toggle.value}
+            
+            {'✅ cuDF available - you can compare CPU vs GPU!' if cudf_available else '⚠️ cuDF not installed - running CPU-only benchmarks'}
+            
+            {'💡 **Pro tip**: Try 10M-100M rows (slider position 7-8) to push GPU to 100% utilization and see 20-50x speedup!' if cudf_available else '💡 Restart the notebook after cuDF installs!'}
+            """),
+            kind="info" if cudf_available else "warn"
+        )
+    ])
     return
 
 
 @app.cell
 def __(mo):
-    """Educational: Understanding GPU Metrics"""
-    mo.md("""
----
+    """Educational: Understanding Benchmark Operations"""
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 🔬 Understanding the Benchmark Operations"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
+### Filter Operation
+**What it does**: Select rows meeting a condition (e.g., `value > 0.5`)
 
-## 📊 Understanding GPU Metrics
+**Why it's fast on GPU:**
+- **Parallel comparison**: GPU checks all rows simultaneously
+- **Predicate evaluation**: Optimized CUDA kernels for comparisons
+- **Memory coalescing**: Sequential memory access pattern
+- **Result**: 10-20x speedup on large datasets
 
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
+**CPU vs GPU difference:**
+- CPU: Loop through rows, check condition (sequential)
+- GPU: All cores check different rows at once (parallel)
 
-### GPU Utilization (%)
-**What it means**: Percentage of time GPU cores are actively computing
+### GroupBy-Aggregation
+**What it does**: Group rows by category, compute statistics (e.g., mean per group)
 
-**Target values:**
-- **< 30%**: Underutilized - data transfer overhead or small dataset
-- **30-70%**: Moderate - good for mixed workloads
-- **> 70%**: Well utilized - GPU is the bottleneck (this is good!)
-- **> 95%**: Fully saturated - maximum performance achieved
+**Why it's challenging:**
+- **Irregular memory access**: Groups aren't contiguous in memory
+- **Synchronization**: Need to combine results from different groups
+- **Variable group sizes**: Some groups have 10 rows, others have 1M
 
-**Why it matters:**
-- Low utilization = you're paying for GPU but not using it
-- High utilization = GPU acceleration is working
-- Consistent 100% = might need bigger GPU or data batching
+**Why GPU excels here:**
+- **Hash-based grouping**: Parallel hash computation
+- **Atomic operations**: GPU hardware supports atomic adds (safe parallel updates)
+- **Two-phase algorithm**: First count group sizes, then aggregate
+- **Result**: 20-50x speedup on datasets with many groups
 
-### Memory Usage (GB/%)
-**What it means**: How much GPU VRAM is allocated
+**This is where GPUs shine brightest!**
 
-**Why monitor it:**
-- **Out of Memory**: Most common GPU error
-- **Memory fragmentation**: Can cause OOM even with free memory
-- **Batch size tuning**: Larger batches = better utilization but more memory
+### Join Operation
+**What it does**: Combine two dataframes based on common key
 
-**VRAM vs System RAM:**
-- System RAM: 64-512 GB typical (slow, CPU accessible)
-- GPU VRAM: 16-80 GB typical (fast, GPU-only)
-- Transfer speed: ~16 GB/s PCIe (bottleneck!)
+**Why it's memory-intensive:**
+- **Build hash table**: First dataframe → hash table (O(n) space)
+- **Probe hash table**: Second dataframe lookups (O(m) time)
+- **Output materialization**: Create result dataframe
 
-**Rule of thumb:**
-- Use <80% of VRAM to leave headroom
-- Monitor peak memory, not average
-- cuDF uses ~2-3x data size in memory (intermediate results)
+**GPU advantages:**
+- **Parallel hash table build**: All rows hashed at once
+- **High memory bandwidth**: 900 GB/s vs CPU's 50 GB/s
+- **Parallel probing**: All lookups happen simultaneously
+- **Result**: 15-40x speedup on large joins
 
-### Temperature (°C)
-**What it means**: GPU core temperature
+**Why this matters for data science:**
+- Joins are ubiquitous in data pipelines
+- Often the bottleneck in ETL workflows
+- GPU acceleration makes interactive analysis possible
 
-**Normal ranges:**
-- **Idle**: 30-50°C
-- **Light load**: 50-65°C
-- **Heavy load**: 65-80°C
-- **Throttling starts**: 80-85°C (GPU slows down to cool)
-- **Critical**: 90°C+ (emergency shutdown)
+### Sort Operation
+**What it does**: Order rows by column value
 
-**Why it matters:**
-- Hot GPU = thermal throttling = slower performance
-- Consistent high temps = check cooling/airflow
-- Data center GPUs (A100, L40S) have better cooling than consumer GPUs
+**Why sorting is hard to parallelize:**
+- **Dependencies**: Can't sort independently (results affect each other)
+- **Comparison-based**: Need O(n log n) comparisons
+- **Cache-unfriendly**: Random memory access patterns
 
-**Performance impact:**
-- Every 10°C above 65°C = ~5-10% performance loss
-- Throttling at 85°C = 15-30% performance loss
+**GPU sorting strategy:**
+- **Radix sort**: Digit-by-digit sorting (GPU-friendly)
+- **Merge sort**: Parallel merge of sorted chunks
+- **Bitonic sort**: Network of compare-swap operations
+- **Result**: 5-15x speedup (lower than other ops due to synchronization)
 
-</details>
-
----
-    """)
+**Why speedup is lower:**
+- Sorting has more dependencies than other operations
+- More GPU synchronization points required
+- Memory access patterns less optimal
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
@@ -924,6 +837,85 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
     
     # Build output based on benchmark state
     _output = None
+    
+@app.cell
+def __(mo, run_benchmark_btn):
+    """Benchmark Results Section Header (only after benchmark runs)"""
+    # Only show this header after user has clicked the run button
+    mo.stop(run_benchmark_btn.value == 0, mo.md(""))
+    
+    mo.md("## 📊 Benchmark Results")
+    return
+
+
+@app.cell
+def __(mo):
+    """Educational: Understanding GPU Metrics"""
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 📊 Understanding GPU Metrics"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
+### GPU Utilization (%)
+**What it means**: Percentage of time GPU cores are actively computing
+
+**Target values:**
+- **< 30%**: Underutilized - data transfer overhead or small dataset
+- **30-70%**: Moderate - good for mixed workloads
+- **> 70%**: Well utilized - GPU is the bottleneck (this is good!)
+- **> 95%**: Fully saturated - maximum performance achieved
+
+**Why it matters:**
+- Low utilization = you're paying for GPU but not using it
+- High utilization = GPU acceleration is working
+- Consistent 100% = might need bigger GPU or data batching
+
+### Memory Usage (GB/%)
+**What it means**: How much GPU VRAM is allocated
+
+**Why monitor it:**
+- **Out of Memory**: Most common GPU error
+- **Memory fragmentation**: Can cause OOM even with free memory
+- **Batch size tuning**: Larger batches = better utilization but more memory
+
+**VRAM vs System RAM:**
+- System RAM: 64-512 GB typical (slow, CPU accessible)
+- GPU VRAM: 16-80 GB typical (fast, GPU-only)
+- Transfer speed: ~16 GB/s PCIe (bottleneck!)
+
+**Rule of thumb:**
+- Use <80% of VRAM to leave headroom
+- Monitor peak memory, not average
+- cuDF uses ~2-3x data size in memory (intermediate results)
+
+### Temperature (°C)
+**What it means**: GPU core temperature
+
+**Normal ranges:**
+- **Idle**: 30-50°C
+- **Light load**: 50-65°C
+- **Heavy load**: 65-80°C
+- **Throttling starts**: 80-85°C (GPU slows down to cool)
+- **Critical**: 90°C+ (emergency shutdown)
+
+**Why it matters:**
+- Hot GPU = thermal throttling = slower performance
+- Consistent high temps = check cooling/airflow
+- Data center GPUs (A100, L40S) have better cooling than consumer GPUs
+
+**Performance impact:**
+- Every 10°C above 65°C = ~5-10% performance loss
+- Throttling at 85°C = 15-30% performance loss
+            """)
+        }),
+        mo.md("---")
+    ])
+    return
+
+
+@app.cell
+def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
+    """Visualize benchmark results"""
     
     if benchmark_results is None:
         # Don't show anything - status cell handles this

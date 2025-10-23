@@ -570,13 +570,11 @@ def __(mo):
 @app.cell
 def __(mo):
     """Educational: Hyperparameter Choices Explained"""
-    mo.md("""
----
-
-## 🎛️ Hyperparameter Choices Explained
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 🎛️ Hyperparameter Choices Explained"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
 
 ### Number of Epochs (Default: 3)
 **What it means**: How many times the model sees the entire dataset
@@ -652,23 +650,21 @@ def __(mo):
 - LoRA focused updates = efficient learning
 - Result: Loss drops from 8.7 → 0.06 in 150 steps (~4 seconds)!
 
-</details>
-
----
-    """)
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
 @app.cell
 def __(mo):
     """Educational: Why Mixed Precision (FP16) Training"""
-    mo.md("""
----
-
-## ⚡ Why Mixed Precision (FP16) Training
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## ⚡ Why Mixed Precision (FP16) Training"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
 
 ### The Floating Point Precision Spectrum
 - **FP32 (32-bit)**: Traditional "full precision"
@@ -733,10 +729,10 @@ Optimizer: FP32 (stable convergence)
 
 > **This is why your training is so fast (3-4 seconds for 3 epochs)!**
 
-</details>
-
----
-    """)
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
@@ -837,13 +833,11 @@ def __(nn, torch, Tuple):
 @app.cell
 def __(mo):
     """Educational: Why LoRA Works"""
-    mo.md("""
----
-
-## 🧠 Why LoRA (Low-Rank Adaptation) Works
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 🧠 Why LoRA (Low-Rank Adaptation) Works"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
 
 ### The Traditional Fine-Tuning Problem
 - Large models have **billions of parameters** (GPT-3: 175B, LLaMA 2 70B: 70B)
@@ -886,23 +880,21 @@ LoRA: Add (A × B) where A is (4096 × 16), B is (16 × 4096)
 
 > **This demo trains 1.29% of parameters (1.6M / 126M) - that's LoRA magic!**
 
-</details>
-
----
-    """)
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
 @app.cell
 def __(mo):
     """Educational: Why GPT-2's Conv1D is Unusual"""
-    mo.md("""
----
-
-## 🏗️ Why GPT-2's Conv1D is Unusual
-
-<details>
-<summary><strong>Click to expand educational content</strong></summary>
+    mo.vstack([
+        mo.md("---"),
+        mo.md("## 🏗️ Why GPT-2's Conv1D is Unusual"),
+        mo.accordion({
+            "Click to expand educational content": mo.md("""
 
 ### Standard Transformer Architecture
 
@@ -943,10 +935,10 @@ out_features = layer.weight.shape[1]
 
 > **This is why the implementation checks layer types carefully!**
 
-</details>
-
----
-    """)
+            """)
+        }),
+        mo.md("---")
+    ])
     return
 
 
