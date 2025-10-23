@@ -748,19 +748,19 @@ def __(train_button, model_with_lora, dataloader, optimizer, num_epochs, use_mix
             # Forward pass
             if use_mixed_precision.value and device.type == "cuda":
                 with torch.cuda.amp.autocast():
-                    outputs = model_with_lora(
+                    _outputs = model_with_lora(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
                         labels=labels
                     )
-                    loss = outputs.loss
+                    loss = _outputs.loss
             else:
-                outputs = model_with_lora(
+                _outputs = model_with_lora(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     labels=labels
                 )
-                loss = outputs.loss
+                loss = _outputs.loss
             
             # Backward pass
             optimizer.zero_grad()
@@ -822,14 +822,14 @@ def __(train_button, model_with_lora, tokenizer, device, torch, mo):
     with torch.no_grad():
         for prompt in _sample_prompts:
             inputs = tokenizer(prompt, return_tensors="pt").to(device)
-            outputs = model_with_lora.generate(
+            _gen_outputs = model_with_lora.generate(
                 **inputs,
                 max_length=50,
                 num_return_sequences=1,
                 temperature=0.7,
                 do_sample=True
             )
-            generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            generated_text = tokenizer.decode(_gen_outputs[0], skip_special_tokens=True)
             _generated_samples.append({'prompt': prompt, 'output': generated_text})
     
     mo.callout(
