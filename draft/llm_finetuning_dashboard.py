@@ -566,8 +566,13 @@ def __(nn, torch, Tuple):
     
     def inject_lora(model: nn.Module, rank: int = 16) -> Tuple[nn.Module, int]:
         """Inject LoRA layers into model attention layers"""
+        # FIRST: Freeze ALL model parameters
+        for param in model.parameters():
+            param.requires_grad = False
+        
         lora_params = 0
         
+        # THEN: Add LoRA layers and make them trainable
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear) and any(x in name for x in ['q_proj', 'v_proj', 'k_proj']):
                 in_features = module.in_features
@@ -593,10 +598,8 @@ def __(nn, torch, Tuple):
                 
                 module.forward = make_forward_with_lora(original_forward, lora_layer)
                 
-                # Freeze original weights
-                module.weight.requires_grad = False
-                if module.bias is not None:
-                    module.bias.requires_grad = False
+                # Original weights already frozen (done at start)
+                # LoRA parameters are automatically trainable (newly created)
         
         return model, lora_params
     
