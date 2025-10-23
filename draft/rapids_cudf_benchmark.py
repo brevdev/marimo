@@ -699,6 +699,51 @@ def __(
 
 
 @app.cell
+def __(run_benchmark_btn, benchmark_results, mo, dataset_size, operations, mode_toggle):
+    """Status indicator - shows immediately when benchmark starts"""
+    
+    _status_display = None
+    
+    # Check if button was clicked but benchmark hasn't completed yet
+    if run_benchmark_btn.value > 0 and benchmark_results is None:
+        # Benchmark is running - show clear indicator
+        _status_display = mo.callout(
+            mo.md(f"""
+            ⏳ **BENCHMARK RUNNING...**
+            
+            **Configuration:**
+            - Dataset: **{10**dataset_size.value:,} rows**
+            - Operations: **{', '.join(operations.value)}**
+            - Mode: **{mode_toggle.value}**
+            
+            **Expected Duration:** 10-60 seconds (varies by dataset size and GPU)
+            
+            ---
+            
+            🔄 **Please wait...** This cell will automatically update with results when complete.
+            
+            💡 **What's happening:**
+            - Generating synthetic dataset
+            - Running benchmarks for each operation
+            - Capturing GPU metrics timeline
+            - Computing speedup statistics
+            
+            *Note: Due to marimo's execution model, progress output appears after completion.*
+            """),
+            kind="info"
+        )
+    elif run_benchmark_btn.value > 0 and benchmark_results is not None:
+        # Benchmark completed - show nothing here (results cell will handle it)
+        _status_display = None
+    else:
+        # Button never clicked - show initial state
+        _status_display = mo.md("*Click 'Run Benchmark' above to start performance comparison*")
+    
+    _status_display if _status_display else mo.md("")
+    return
+
+
+@app.cell
 def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
     """Visualize benchmark results"""
     
@@ -706,12 +751,9 @@ def __(benchmark_results, mo, pd, go, cudf_available, run_benchmark_btn):
     _output = None
     
     if benchmark_results is None:
-        # Show initial message before any benchmark runs
-        _output = mo.callout(
-            mo.md("**Click 'Run Benchmark' to start performance comparison**"),
-            kind="info"
-        )
-    elif not benchmark_results['success']:
+        # Don't show anything - status cell handles this
+        _output = None
+    elif not benchmark_results.get('success', False):
         # Show error message
         error_msg = f"**Benchmark Error**: {benchmark_results['error']}"
         if 'suggestion' in benchmark_results:
