@@ -218,6 +218,85 @@ def __(mo, dataset_size, operations, mode_toggle, run_benchmark_btn, cudf_availa
 
 
 @app.cell
+def __(mo):
+    """Educational: Understanding Benchmark Operations"""
+    mo.callout(
+        mo.md("""
+## 🔬 Understanding the Benchmark Operations
+
+### Filter Operation
+**What it does**: Select rows meeting a condition (e.g., `value > 0.5`)
+
+**Why it's fast on GPU:**
+- **Parallel comparison**: GPU checks all rows simultaneously
+- **Predicate evaluation**: Optimized CUDA kernels for comparisons
+- **Memory coalescing**: Sequential memory access pattern
+- **Result**: 10-20x speedup on large datasets
+
+**CPU vs GPU difference:**
+- CPU: Loop through rows, check condition (sequential)
+- GPU: All cores check different rows at once (parallel)
+
+### GroupBy-Aggregation
+**What it does**: Group rows by category, compute statistics (e.g., mean per group)
+
+**Why it's challenging:**
+- **Irregular memory access**: Groups aren't contiguous in memory
+- **Synchronization**: Need to combine results from different groups
+- **Variable group sizes**: Some groups have 10 rows, others have 1M
+
+**Why GPU excels here:**
+- **Hash-based grouping**: Parallel hash computation
+- **Atomic operations**: GPU hardware supports atomic adds (safe parallel updates)
+- **Two-phase algorithm**: First count group sizes, then aggregate
+- **Result**: 20-50x speedup on datasets with many groups
+
+**This is where GPUs shine brightest!**
+
+### Join Operation
+**What it does**: Combine two dataframes based on common key
+
+**Why it's memory-intensive:**
+- **Build hash table**: First dataframe → hash table (O(n) space)
+- **Probe hash table**: Second dataframe lookups (O(m) time)
+- **Output materialization**: Create result dataframe
+
+**GPU advantages:**
+- **Parallel hash table build**: All rows hashed at once
+- **High memory bandwidth**: 900 GB/s vs CPU's 50 GB/s
+- **Parallel probing**: All lookups happen simultaneously
+- **Result**: 15-40x speedup on large joins
+
+**Why this matters for data science:**
+- Joins are ubiquitous in data pipelines
+- Often the bottleneck in ETL workflows
+- GPU acceleration makes interactive analysis possible
+
+### Sort Operation
+**What it does**: Order rows by column value
+
+**Why sorting is hard to parallelize:**
+- **Dependencies**: Can't sort independently (results affect each other)
+- **Comparison-based**: Need O(n log n) comparisons
+- **Cache-unfriendly**: Random memory access patterns
+
+**GPU sorting strategy:**
+- **Radix sort**: Digit-by-digit sorting (GPU-friendly)
+- **Merge sort**: Parallel merge of sorted chunks
+- **Bitonic sort**: Network of compare-swap operations
+- **Result**: 5-15x speedup (lower than other ops due to synchronization)
+
+**Why speedup is lower:**
+- Sorting has more dependencies than other operations
+- More GPU synchronization points required
+- Memory access patterns less optimal
+        """),
+        kind="info"
+    )
+    return
+
+
+@app.cell
 def __(torch, mo, subprocess):
     """GPU Detection"""
     
@@ -291,8 +370,113 @@ def __(torch, mo, subprocess):
 
 @app.cell
 def __(mo):
+    """Educational: Why GPU-Accelerated DataFrames?"""
+    mo.callout(
+        mo.md("""
+## 💡 Why GPU-Accelerated DataFrames?
+
+**The Problem with Traditional Data Processing:**
+- CPUs process data **sequentially** (one row at a time, even with multiple cores)
+- Moving data between CPU cores is slow due to memory bandwidth limits
+- Python loops are especially slow due to interpreter overhead
+
+**How GPUs Solve This:**
+- GPUs have **thousands of cores** (vs CPU's ~10-100 cores)
+- **Massively parallel**: Process thousands of rows simultaneously
+- **High memory bandwidth**: 10-20x faster than CPU memory (900 GB/s vs 50 GB/s)
+- **SIMD operations**: Same instruction on many data points at once
+
+**When GPU Acceleration Helps Most:**
+- ✅ **Large datasets** (1M+ rows) - enough work to saturate GPU
+- ✅ **Simple operations** (filter, groupby, join) - GPU-optimized kernels
+- ✅ **Batch processing** - amortize data transfer costs
+- ❌ **Complex Python logic** - GPU can't execute arbitrary Python
+- ❌ **Small datasets** (<10K rows) - CPU faster due to transfer overhead
+
+**The 1M Row Threshold:**
+
+Below ~1M rows, CPU is often faster because:
+1. **Data transfer overhead**: Moving data to GPU takes ~1ms
+2. **Kernel launch overhead**: Starting GPU kernels takes time
+3. **CPU caches work well**: Small data fits in L1/L2/L3 cache
+
+Above 1M rows:
+- Data no longer fits in CPU cache
+- GPU's parallelism overcomes overhead
+- 10-50x speedups become common
+        """),
+        kind="info"
+    )
+    return
+
+
+@app.cell
+def __(mo):
     """Benchmark Results Section Header"""
     mo.md("## 📊 Benchmark Results")
+    return
+
+
+@app.cell
+def __(mo):
+    """Educational: Understanding GPU Metrics"""
+    mo.callout(
+        mo.md("""
+## 📊 Understanding GPU Metrics
+
+### GPU Utilization (%)
+**What it means**: Percentage of time GPU cores are actively computing
+
+**Target values:**
+- **< 30%**: Underutilized - data transfer overhead or small dataset
+- **30-70%**: Moderate - good for mixed workloads
+- **> 70%**: Well utilized - GPU is the bottleneck (this is good!)
+- **> 95%**: Fully saturated - maximum performance achieved
+
+**Why it matters:**
+- Low utilization = you're paying for GPU but not using it
+- High utilization = GPU acceleration is working
+- Consistent 100% = might need bigger GPU or data batching
+
+### Memory Usage (GB/%)
+**What it means**: How much GPU VRAM is allocated
+
+**Why monitor it:**
+- **Out of Memory**: Most common GPU error
+- **Memory fragmentation**: Can cause OOM even with free memory
+- **Batch size tuning**: Larger batches = better utilization but more memory
+
+**VRAM vs System RAM:**
+- System RAM: 64-512 GB typical (slow, CPU accessible)
+- GPU VRAM: 16-80 GB typical (fast, GPU-only)
+- Transfer speed: ~16 GB/s PCIe (bottleneck!)
+
+**Rule of thumb:**
+- Use <80% of VRAM to leave headroom
+- Monitor peak memory, not average
+- cuDF uses ~2-3x data size in memory (intermediate results)
+
+### Temperature (°C)
+**What it means**: GPU core temperature
+
+**Normal ranges:**
+- **Idle**: 30-50°C
+- **Light load**: 50-65°C
+- **Heavy load**: 65-80°C
+- **Throttling starts**: 80-85°C (GPU slows down to cool)
+- **Critical**: 90°C+ (emergency shutdown)
+
+**Why it matters:**
+- Hot GPU = thermal throttling = slower performance
+- Consistent high temps = check cooling/airflow
+- Data center GPUs (A100, L40S) have better cooling than consumer GPUs
+
+**Performance impact:**
+- Every 10°C above 65°C = ~5-10% performance loss
+- Throttling at 85°C = 15-30% performance loss
+        """),
+        kind="info"
+    )
     return
 
 

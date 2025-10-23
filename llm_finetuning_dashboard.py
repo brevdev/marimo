@@ -330,6 +330,167 @@ def __(mo):
 
 
 @app.cell
+def __(mo):
+    """Educational: Hyperparameter Choices Explained"""
+    mo.callout(
+        mo.md("""
+## 🎛️ Hyperparameter Choices Explained
+
+### Number of Epochs (Default: 3)
+**What it means**: How many times the model sees the entire dataset
+
+**Why 3 is chosen:**
+- **Underfitting** (1 epoch): Model barely learns patterns
+- **Sweet spot** (2-3 epochs): Good balance for demos
+- **Overfitting** (5+ epochs): Model memorizes training data
+
+**For this demo (200 samples):**
+- 3 epochs = seeing each sample 3 times
+- Total training steps: 200 samples / 4 batch size × 3 epochs = 150 steps
+- Real production: 10K-1M samples, 3-10 epochs
+
+### Batch Size (Default: 4)
+**What it means**: How many samples processed together per GPU update
+
+**Why 4 is chosen:**
+- **Memory constraint**: GPT-2 (124M params) + LoRA fits easily
+- **Gradient stability**: Larger batches = more stable gradients
+- **Speed**: Larger batches better utilize GPU
+
+**Trade-offs:**
+- **Batch = 1**: Noisy gradients, slow, unstable (bad)
+- **Batch = 4**: Balanced (good for demo)
+- **Batch = 32**: Stable, fast, but needs 8x more VRAM
+- **Batch = 128**: Production scale (needs gradient accumulation)
+
+**Your GPU (L40S, 44GB):**
+- Could handle batch size 32-64 easily
+- Larger batch = faster training
+- This demo uses 4 for conservative memory usage
+
+### LoRA Rank (Default: 16)
+**What it means**: Dimension of the low-rank factorization
+
+**Why 16 is chosen:**
+- **Rank 8**: 65K parameters, fast but limited capacity
+- **Rank 16**: 131K parameters, good balance (demo choice)
+- **Rank 32**: 262K parameters, higher quality
+- **Rank 64**: 524K parameters, approaching full fine-tuning
+
+**Memory scaling:**
+- Rank 16 → 32: Parameters roughly double (1.6M → 3.2M)
+- Impact: Minimal for GPT-2, significant for 7B models
+
+**Quality scaling:**
+- Rank too low: Can't capture task complexity
+- Rank too high: Slower training, marginal gains
+- **Rule of thumb**: Start at 16, increase if underfitting
+
+### Learning Rate (Default: 3e-4)
+**What it means**: How much to update weights per gradient step
+
+**Why 3e-4:**
+- **Adam optimizer sweet spot**: 1e-4 to 1e-3
+- **LoRA scaling**: LoRA uses larger LR than full fine-tuning
+- **Fast convergence**: See loss decrease in first 10-20 steps
+
+**Learning rate comparison:**
+- **Full fine-tuning**: 1e-5 to 5e-5 (smaller, more conservative)
+- **LoRA**: 1e-4 to 5e-4 (larger, LoRA is more stable)
+- **This demo**: 3e-4 (middle ground)
+
+**What happens if wrong:**
+- **Too large** (1e-3+): Loss becomes NaN (exploding gradients)
+- **Too small** (1e-5): Training is slow, might not converge
+- **Just right** (3e-4): Loss decreases smoothly (8.7 → 0.06 in this demo)
+
+**Why We See Fast Convergence:**
+- Small dataset (200 samples) = easy to overfit
+- GPT-2 already knows language = transfer learning
+- LoRA focused updates = efficient learning
+- Result: Loss drops from 8.7 → 0.06 in 150 steps (~4 seconds)!
+        """),
+        kind="info"
+    )
+    return
+
+
+@app.cell
+def __(mo):
+    """Educational: Why Mixed Precision (FP16) Training"""
+    mo.callout(
+        mo.md("""
+## ⚡ Why Mixed Precision (FP16) Training
+
+**The Floating Point Precision Spectrum:**
+- **FP32 (32-bit)**: Traditional "full precision"
+  - Range: ±3.4 × 10³⁸
+  - Precision: ~7 decimal digits
+  - Size: 4 bytes per number
+  
+- **FP16 (16-bit)**: "Half precision"
+  - Range: ±6.5 × 10⁴
+  - Precision: ~3 decimal digits
+  - Size: 2 bytes per number
+  
+- **BF16 (16-bit)**: "Brain Float" (Google's format)
+  - Range: Same as FP32 (±3.4 × 10³⁸)
+  - Precision: Reduced (~3 decimal digits)
+  - Size: 2 bytes per number
+
+**Why FP16 is Faster:**
+1. **Memory bandwidth**: 2x less data to move (16 bits vs 32 bits)
+2. **Tensor Cores**: Modern GPUs have dedicated FP16 hardware
+   - L40S: 4th gen Tensor Cores (733 TFLOPS FP16)
+   - Same GPU: 91 TFLOPS FP32
+   - **8x speed difference!**
+3. **Memory capacity**: Fit 2x larger models in same VRAM
+
+**The Precision Trade-off:**
+- **FP32**: Stable, safe, traditional
+- **FP16**: Fast but risky - small numbers underflow to zero, large overflow to infinity
+- **BF16**: Fast and stable (preferred for training, requires newer GPUs)
+
+**This Demo's Approach (Proper FP16 Training):**
+```python
+Model weights: FP16 (memory efficient)
+LoRA parameters: FP32 (stable training)
+Forward pass: FP16 computation (fast)
+Loss: FP16 → scaled to FP32
+Gradients: FP32 (precise updates)
+Optimizer: FP32 (stable convergence)
+```
+
+**Why This Hybrid Approach:**
+- **GradScaler**: Prevents gradient underflow
+  - Multiply loss by 65536 before backward()
+  - Compute gradients in scaled range
+  - Unscale before optimizer step
+  - Dynamically adjusts scale factor
+  
+- **FP32 LoRA params**: Optimizer needs precision
+  - FP16 optimizer states = training instability
+  - Adam momentum/variance need precision
+  - Small learning rates need precise updates
+
+**Why NaN Loss Without GradScaler:**
+1. FP16 range: 6.5 × 10⁴ to 6.0 × 10⁻⁵
+2. Gradients often < 10⁻⁵ (underflow to zero!)
+3. Zero gradients = no learning = weights drift = NaN loss
+
+**Performance on L40S (Your GPU):**
+- **FP32**: ~90 TFLOPS
+- **FP16 with Tensor Cores**: ~730 TFLOPS
+- **Speedup**: ~8x theoretical, ~3-5x practical (memory bound)
+
+**This is why your training is so fast (3-4 seconds for 3 epochs)!**
+        """),
+        kind="info"
+    )
+    return
+
+
+@app.cell
 def __(torch, mo, subprocess, Dict):
     """GPU Detection and Validation"""
     
@@ -616,6 +777,110 @@ def __(nn, torch, Tuple):
         return model, lora_params, trainable_params
     
     return LoRALayer, inject_lora
+
+
+@app.cell
+def __(mo):
+    """Educational: Why LoRA Works"""
+    mo.callout(
+        mo.md("""
+## 🧠 Why LoRA (Low-Rank Adaptation) Works
+
+**The Traditional Fine-Tuning Problem:**
+- Large models have **billions of parameters** (GPT-3: 175B, LLaMA 2 70B: 70B)
+- **Full fine-tuning** requires:
+  - Updating ALL parameters
+  - Storing gradients for ALL parameters (2x model size)
+  - Storing optimizer states (Adam: 2x more, so 4x total!)
+- **Result**: 175B model needs 700GB+ VRAM just for training
+
+**LoRA's Breakthrough Insight:**
+
+When fine-tuning, the weight updates are **low-rank**:
+- Most dimensions don't change much
+- Changes lie in a low-dimensional subspace
+- We can approximate updates with **much smaller matrices**
+
+**The Math (Simplified):**
+```
+Traditional: Update W (4096 × 4096) = 16M parameters
+LoRA: Add (A × B) where A is (4096 × 16), B is (16 × 4096)
+      Total: 4096×16 + 16×4096 = 131K parameters (99% reduction!)
+```
+
+**Why This Works:**
+1. **Rank decomposition**: `W_update ≈ A × B` where `rank(A × B) << rank(W)`
+2. **Intrinsic dimensionality**: Task-specific knowledge is low-dimensional
+3. **Preserve pretrained**: Keep `W` frozen, only train `A` and `B`
+
+**Real-World Impact:**
+- **Memory**: 3-10x reduction (fit 7B model on 24GB GPU)
+- **Speed**: 2-3x faster training (fewer parameters to update)
+- **Quality**: 95-99% of full fine-tuning performance
+- **Modularity**: Swap LoRA adapters without retraining base model
+
+**LoRA Rank Matters:**
+- **Rank 4-8**: Minimal parameters, good for simple tasks (sentiment, classification)
+- **Rank 16-32**: Balanced, good for most tasks (this demo uses 16)
+- **Rank 64-128**: More capacity, better for complex tasks (summarization, reasoning)
+- **Rank > 128**: Approaching full fine-tuning, diminishing returns
+
+**This demo trains 1.29% of parameters (1.6M / 126M) - that's LoRA magic!**
+        """),
+        kind="info"
+    )
+    return
+
+
+@app.cell
+def __(mo):
+    """Educational: Why GPT-2's Conv1D is Unusual"""
+    mo.callout(
+        mo.md("""
+## 🏗️ Why GPT-2's Conv1D is Unusual
+
+**Standard Transformer Architecture:**
+
+Most transformers (BERT, LLaMA, Mistral) use `nn.Linear` layers:
+- Weight shape: `(out_features, in_features)`
+- Example: `(2304, 768)` for attention projection
+- Standard PyTorch convention
+
+**GPT-2's Unique Choice:**
+
+OpenAI used `Conv1D` layers instead:
+- Weight shape: `(in_features, out_features)` - **OPPOSITE!**
+- Same operation, just transposed weights
+- Legacy from GPT-1 implementation
+
+**Why This Matters for LoRA:**
+```python
+# LLaMA/Mistral (nn.Linear):
+layer = nn.Linear(768, 2304)
+in_features = layer.in_features  # 768 ✓
+out_features = layer.out_features  # 2304 ✓
+
+# GPT-2 (Conv1D):
+layer = Conv1D(2304, 768)  # nf=2304, nx=768
+in_features = layer.weight.shape[0]  # Must read from weight!
+out_features = layer.weight.shape[1]
+```
+
+**Why OpenAI Used Conv1D:**
+1. **Historical**: GPT-1 experimented with convolutional attention
+2. **Efficiency**: Weight transpose is free on GPU (different memory view)
+3. **Compatibility**: Existing Conv1D codebase
+
+**Impact on This Demo:**
+- Can't use standard LoRA implementations (designed for nn.Linear)
+- Must handle both Conv1D (GPT-2) and Linear (other models)
+- Weight shape extraction logic is model-specific
+
+**This is why the implementation checks layer types carefully!**
+        """),
+        kind="info"
+    )
+    return
 
 
 @app.cell

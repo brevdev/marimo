@@ -1,9 +1,9 @@
 # Single-Shot Notebook QA Prompt
 
-**Version**: 1.0  
+**Version**: 2.0  
 **Date**: October 23, 2025  
 **Purpose**: Comprehensive single-shot QA for NVIDIA + Marimo notebooks  
-**Based on**: Lessons learned from RAPIDS cuDF benchmark development
+**Based on**: Lessons from RAPIDS cuDF benchmark and LLM Fine-Tuning Dashboard development
 
 ---
 
@@ -519,6 +519,231 @@ At the end of the review, provide a summary score matching the format in NVIDIA_
 
 ---
 
+## 11. MIXED PRECISION TRAINING (FP16/BF16)
+
+### GradScaler Requirements
+- [ ] **GradScaler created** when using FP16 training (`torch.cuda.amp.GradScaler()`)
+- [ ] **Trainable parameters are FP32**, not FP16 (optimizer requirement)
+- [ ] **Model weights can be FP16** (memory efficiency)
+- [ ] **Forward pass uses autocast()** for FP16 computation
+- [ ] **Backward pass uses scaler.scale(loss).backward()**
+- [ ] **Gradient unscaling** before clipping: `scaler.unscale_(optimizer)`
+- [ ] **Gradient clipping** after unscaling
+- [ ] **Optimizer step** uses scaler: `scaler.step(optimizer)`
+- [ ] **Scaler update** after step: `scaler.update()`
+
+```python
+# CORRECT FP16 Training Pattern ✅
+scaler = torch.cuda.amp.GradScaler() if use_fp16 else None
+
+if use_fp16:
+    with torch.cuda.amp.autocast():
+        loss = model(...)
+    
+    optimizer.zero_grad()
+    scaler.scale(loss).backward()
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(params, max_norm=1.0)
+    scaler.step(optimizer)
+    scaler.update()
+else:
+    loss = model(...)
+    optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(params, max_norm=1.0)
+    optimizer.step()
+```
+
+### Dtype Management
+- [ ] **Check that model and data dtypes match** during forward pass
+- [ ] **Handle dtype conversion** in custom layers if mixing FP16 model with FP32 parameters
+- [ ] **Test for NaN loss** - primary symptom of FP16 issues
+- [ ] **Gradient clipping** is essential with FP16 (prevents NaN)
+
+### Common FP16 Errors
+- [ ] `ValueError: Attempting to unscale FP16 gradients` → trainable params must be FP32
+- [ ] `RuntimeError: expected same dtype` → model FP16 but params FP32, need conversion layer
+- [ ] NaN loss → missing GradScaler or gradient clipping
+
+## 12. LORA IMPLEMENTATION
+
+### Architecture-Specific Layer Detection
+- [ ] **GPT-2 uses Conv1D** with shape `(in_features, out_features)` - OPPOSITE of nn.Linear!
+- [ ] **LLaMA/Mistral use nn.Linear** with shape `(out_features, in_features)`
+- [ ] **Check layer type** before accessing dimensions
+- [ ] **Handle both Conv1D and Linear** in same codebase
+
+```python
+# CORRECT Layer Detection ✅
+is_linear = isinstance(module, nn.Linear)
+is_conv1d = type(module).__name__ == 'Conv1D'
+
+if is_conv1d:
+    # GPT-2: weight shape is (in_features, out_features)
+    in_features = module.weight.shape[0]
+    out_features = module.weight.shape[1]
+else:
+    # Standard: Linear has attributes
+    in_features = module.in_features
+    out_features = module.out_features
+```
+
+### LoRA Parameter Management
+- [ ] **Freeze ALL base model parameters first** (`param.requires_grad = False`)
+- [ ] **Explicitly collect LoRA parameters** for optimizer (don't rely on filter)
+- [ ] **LoRA parameters must be FP32** even if model is FP16
+- [ ] **Move LoRA to correct device** (same as model)
+- [ ] **Verify trainable parameter count** is small (0.1-3% of total)
+
+### LoRA Forward Pass
+- [ ] **Handle dtype conversion** if model is FP16 but LoRA is FP32
+- [ ] **Return to original dtype** after LoRA computation
+
+## 13. MARIMO VARIABLE PASSING PATTERNS
+
+### Underscore-Prefixed Variables
+- [ ] **Underscore variables (_var) are LOCAL to a cell** - not passed to other cells
+- [ ] **Remove underscore** if variable needs to be passed between cells
+- [ ] **Check all return statements** to ensure critical data is returned
+
+### Cell Output Display Patterns
+- [ ] **Last expression in cell is displayed** automatically
+- [ ] **Expressions inside if/else are NOT displayed** (Python scoping)
+- [ ] **Assign to variable, then return** for conditional display
+
+### Multi-Step Process Cells
+- [ ] **Break complex operations into separate cells** for progress visibility
+- [ ] **Each cell can display its own progress indicator**
+- [ ] **Use `mo.stop()` at start of each cell** for conditional execution
+- [ ] **Return data, not UI** from processing cells
+
+## 14. EDUCATIONAL DOCUMENTATION
+
+### "Why" Not Just "What"
+- [ ] **Explain WHY decisions were made**, not just what the code does
+- [ ] **Include performance implications** of design choices
+- [ ] **Compare alternatives** (e.g., "Why LoRA vs full fine-tuning")
+- [ ] **Explain trade-offs** (e.g., "Batch size: speed vs memory")
+
+### Key Topics to Explain
+- [ ] **Why GPU acceleration helps** (parallelism, memory bandwidth)
+- [ ] **Why specific hyperparameters** (learning rate, batch size, epochs)
+- [ ] **Why this architecture** (Conv1D vs Linear, FP16 vs FP32)
+- [ ] **Why this optimization** (GradScaler, gradient clipping)
+- [ ] **When to use this approach** (dataset size, hardware requirements)
+
+### Interactive Learning Elements
+- [ ] **Dataset preview tables** so users see the data
+- [ ] **Editable configuration** with clear explanations
+- [ ] **Visual progress indicators** for each step
+- [ ] **Result interpretation** not just raw numbers
+
+## 15. DEPENDENCY AUTO-INSTALLATION PATTERNS
+
+### Transformers Library Pattern
+- [ ] **Check if already installed** before attempting install
+- [ ] **Install compatible versions** (e.g., torchvision with transformers)
+- [ ] **Provide clear feedback** during installation
+- [ ] **Handle import failures gracefully** with restart instructions
+- [ ] **Re-import after installation** (don't rely on previous cell's import)
+
+## 16. UI CONSISTENCY
+
+### Color Consistency
+- [ ] **All similar elements use same color** (e.g., all samples "neutral", not first "success")
+- [ ] **Reserve "success"** for actual success states (completion)
+- [ ] **Reserve "warn"** for warnings (not educational content)
+- [ ] **Use "info"** for educational/explanatory content
+- [ ] **Use "danger"** only for errors
+
+### Table Interaction
+- [ ] **Show all data with pagination** not just subset
+- [ ] **Use `page_size` parameter** for reasonable page size (10-20 rows)
+- [ ] **Include row indices** for reference
+- [ ] **Make columns readable** (not too wide)
+
+## 17. GPU-SPECIFIC LLM PATTERNS
+
+### Model-Specific Considerations
+- [ ] **GPT-2 uses Conv1D** - check `type().__name__ == 'Conv1D'`
+- [ ] **LLaMA uses Linear** - check `isinstance(module, nn.Linear)`
+- [ ] **Different models have different layer names**:
+  - GPT-2: `c_attn`, `c_proj`
+  - LLaMA: `q_proj`, `v_proj`, `k_proj`, `o_proj`
+  - Mistral: same as LLaMA
+- [ ] **Support multiple architectures** in same code
+
+### Device and Dtype Placement
+- [ ] **Move tensors to device immediately** when created
+- [ ] **Check device of input tensors** before operations
+- [ ] **Match dtypes** between model and input
+- [ ] **Synchronize GPU** before timing: `torch.cuda.synchronize()`
+
+---
+
+## COMMON FAILURE PATTERNS (NEW)
+
+### Pattern 1: NaN Loss
+**Symptom**: Loss becomes NaN after a few training steps
+
+**Causes**:
+1. Missing GradScaler (FP16 training)
+2. Learning rate too high
+3. No gradient clipping
+4. FP16 LoRA parameters (should be FP32)
+
+**Fix Priority**:
+1. Add GradScaler
+2. Keep LoRA params in FP32
+3. Add gradient clipping (max_norm=1.0)
+4. Lower learning rate if still NaN
+
+### Pattern 2: Empty Optimizer
+**Symptom**: `ValueError: optimizer got an empty parameter list`
+
+**Causes**:
+1. Forgot to freeze base model parameters
+2. LoRA layers not added correctly
+3. Wrong layer name detection
+4. Architecture mismatch (Conv1D vs Linear)
+
+**Fix Priority**:
+1. Freeze all params: `for p in model.parameters(): p.requires_grad = False`
+2. Explicitly collect LoRA params: `trainable_params.extend([lora_A, lora_B])`
+3. Check layer detection logic
+4. Print parameter counts for debugging
+
+### Pattern 3: Visualizations Not Displaying
+**Symptom**: Training completes but no charts shown
+
+**Causes**:
+1. Expression inside if/else block (Python scope)
+2. `mo.stop()` preventing cell execution
+3. Underscore variables not passed correctly
+4. Missing return statement
+
+**Fix Priority**:
+1. Assign to variable in if/else, then return at top level
+2. Remove `mo.stop()` from visualization cell (use dependencies)
+3. Remove underscores from variable names
+4. Ensure `output` is last expression in cell
+
+### Pattern 4: Device/Dtype Mismatch
+**Symptom**: `RuntimeError: expected mat1 and mat2 to have same dtype/device`
+
+**Causes**:
+1. LoRA on CPU, model on GPU
+2. LoRA in FP16, optimizer expects FP32
+3. Input tensor on wrong device
+
+**Fix Priority**:
+1. Move LoRA to correct device: `lora.to(device=model.device)`
+2. Keep LoRA in FP32: `lora.to(dtype=torch.float32)`
+3. Handle dtype conversion in forward pass
+4. Check all tensor devices before operations
+
+---
+
 END OF QA CHECKLIST
 ```
 
@@ -724,6 +949,27 @@ Use this as the authoritative reference for:
 
 ## Changelog
 
+- **v2.0** (2025-10-23): Major expansion based on LLM Fine-Tuning Dashboard development
+  - **Added 7 new sections** (11-17):
+    - Section 11: Mixed Precision Training (FP16/BF16)
+    - Section 12: LoRA Implementation
+    - Section 13: Marimo Variable Passing Patterns
+    - Section 14: Educational Documentation
+    - Section 15: Dependency Auto-Installation Patterns
+    - Section 16: UI Consistency
+    - Section 17: GPU-Specific LLM Patterns
+  - **Added 4 Common Failure Patterns**:
+    - NaN Loss (GradScaler, learning rate, clipping)
+    - Empty Optimizer (parameter freezing, LoRA collection)
+    - Visualizations Not Displaying (Python scope, mo.stop())
+    - Device/Dtype Mismatch (FP16/FP32, CPU/GPU)
+  - **Key learnings from 16 bugs fixed**:
+    - FP16 training requires GradScaler + FP32 trainable params
+    - GPT-2 Conv1D has opposite weight shape from nn.Linear
+    - Marimo underscore variables are local to cells
+    - Educational documentation is critical for user understanding
+  - **Validation points increased from ~100 to 150+**
+  
 - **v1.0** (2025-10-23): Initial version based on RAPIDS development lessons
   - Added references to NVIDIA_MARIMO_BEST_PRACTICES.md
   - Added marimo documentation links
