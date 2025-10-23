@@ -453,18 +453,54 @@ def __(Dataset, torch, List, Tuple, Dict):
             self.samples = self._generate_samples(num_samples)
         
         def _generate_samples(self, num_samples: int) -> List[str]:
-            """Generate synthetic training samples"""
-            templates = [
-                "Translate English to French: {} => {}",
-                "Summarize this text: {} Summary: {}",
-                "Answer the question: {} Answer: {}",
-                "Complete the sentence: {} {}",
+            """Generate realistic synthetic training samples for demonstration"""
+            
+            # Realistic examples that look like actual fine-tuning data
+            examples = [
+                # Translation examples
+                "Translate to French: Hello, how are you? -> Bonjour, comment allez-vous?",
+                "Translate to French: The weather is nice today. -> Le temps est beau aujourd'hui.",
+                "Translate to Spanish: Good morning! -> Buenos días!",
+                "Translate to Spanish: Thank you very much. -> Muchas gracias.",
+                "Translate to German: Where is the train station? -> Wo ist der Bahnhof?",
+                
+                # Summarization examples
+                "Summarize: Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. Summary: ML allows computers to learn from data.",
+                "Summarize: The annual tech conference showcased innovations in AI, robotics, and quantum computing. Summary: Conference highlighted AI, robotics, and quantum tech advances.",
+                "Summarize: Climate change poses significant challenges requiring global cooperation and sustainable practices. Summary: Climate change demands worldwide action and sustainability.",
+                
+                # Question answering
+                "Question: What is machine learning? Answer: Machine learning is a method of teaching computers to learn from data and make decisions.",
+                "Question: Who invented the telephone? Answer: Alexander Graham Bell invented the telephone in 1876.",
+                "Question: What is photosynthesis? Answer: Photosynthesis is the process plants use to convert sunlight into energy.",
+                "Question: What is the capital of France? Answer: The capital of France is Paris.",
+                
+                # Instruction following
+                "Instruction: Write a haiku about coding. Output: Lines of code flow smooth / Logic dances on the screen / Bugs vanish at dawn",
+                "Instruction: Explain recursion simply. Output: Recursion is when a function calls itself to solve smaller versions of the same problem.",
+                "Instruction: List 3 benefits of exercise. Output: 1) Improves cardiovascular health 2) Boosts mood and energy 3) Strengthens muscles and bones",
+                
+                # Sentiment analysis
+                "Classify sentiment: This movie was absolutely amazing! Label: Positive",
+                "Classify sentiment: I'm disappointed with the service. Label: Negative",
+                "Classify sentiment: The product works as expected. Label: Neutral",
+                
+                # Code generation
+                "Generate Python: function to add two numbers -> def add(a, b): return a + b",
+                "Generate Python: function to reverse a string -> def reverse(s): return s[::-1]",
             ]
             
+            # Repeat and vary examples to reach desired num_samples
             samples = []
             for i in range(num_samples):
-                template = templates[i % len(templates)]
-                samples.append(template.format(f"input_{i}", f"output_{i}"))
+                base_example = examples[i % len(examples)]
+                # Add slight variation to index for uniqueness
+                if i >= len(examples):
+                    variation_num = i // len(examples)
+                    samples.append(f"{base_example} [v{variation_num}]")
+                else:
+                    samples.append(base_example)
+            
             return samples
         
         def __len__(self) -> int:
@@ -604,10 +640,10 @@ def __(mo, pd, FineTuningDataset):
             pass
     
     dummy_tok = DummyTokenizer()
-    preview_dataset = FineTuningDataset(dummy_tok, num_samples=10)
-    preview_samples = preview_dataset._generate_samples(10)
+    preview_dataset = FineTuningDataset(dummy_tok, num_samples=200)
+    preview_samples = preview_dataset._generate_samples(200)
     
-    # Create DataFrame for display
+    # Create DataFrame for display (all 200 samples)
     dataset_df = pd.DataFrame({
         'Index': range(len(preview_samples)),
         'Training Sample': preview_samples
@@ -617,17 +653,22 @@ def __(mo, pd, FineTuningDataset):
         mo.md("## 📊 Training Dataset Preview"),
         mo.callout(
             mo.md("""
-**Sample Data**: This demo uses 200 synthetic training samples. The model will learn patterns from this data.
+**Realistic Demo Data**: This demo uses 200 synthetic training samples covering:
+- 🌍 Translation (English → French, Spanish, German)
+- 📝 Summarization (compress text into key points)
+- ❓ Question Answering (factual Q&A)
+- 📋 Instruction Following (haikus, explanations, lists)
+- 😊 Sentiment Analysis (positive/negative/neutral)
+- 💻 Code Generation (simple Python functions)
 
-💡 **For real applications**: Replace `FineTuningDataset` with your actual task-specific data 
-(translation pairs, summarization examples, Q&A datasets, etc.)
+💡 **For real applications**: Replace `FineTuningDataset` with your actual task-specific data!
 
-**Preview** (showing first 10 of 200 samples):
+**Interactive Table** (showing all 200 samples with pagination):
             """),
             kind="info"
         ),
         mo.ui.table(dataset_df, selection=None, page_size=10),
-        mo.md("*The model will see all 200 samples during training, shuffled across batches.*"),
+        mo.md("*Scroll through pages to see all samples. The model will see all 200 during training, shuffled across batches.*"),
     ])
     
     return dataset_df,
@@ -1161,7 +1202,7 @@ def __(training_results, mo, go, pd, np):
                         mo.md(f"**Prompt:** {sample['prompt']}"),
                         mo.md(f"**Output:** {sample['output']}")
                     ]),
-                    kind="success" if _i == 1 else "neutral"
+                    kind="neutral"  # All samples same color for consistency
                 )
             )
         
@@ -1225,14 +1266,14 @@ def __(training_results, mo, go, pd, np):
             mo.md("## 💬 Sample Text Generation"),
             mo.callout(
                 mo.md("""
-**⚠️ Note**: The sample outputs below may look strange because this demo uses **dummy training data** 
-(generic "Sample text 1, 2, 3..."). The model learned to reproduce that pattern, not actual 
-translation/summarization tasks.
+**About these samples**: The model was fine-tuned on 200 synthetic examples (translations, 
+summarizations, Q&A, etc.) over 3 epochs. Since this is a **tiny dataset** on a **small model** (GPT-2), 
+outputs may be imperfect or repetitive.
 
-For real applications, replace `FineTuningDataset` with your actual task-specific data 
-(translation pairs, summarization examples, Q&A pairs, etc.).
+**For production**: Use thousands of high-quality examples, larger models (LLaMA 2, Mistral), 
+and more training epochs for better results.
                 """),
-                kind="warn"
+                kind="info"
             ),
             mo.vstack(samples_display),
             
