@@ -403,13 +403,25 @@ def __(mo, device, torch):
             gpu_props = torch.cuda.get_device_properties(0)
             total_gb = gpu_props.total_memory / 1024**3
             
+            # Decode compute capability
+            cc = f"{gpu_props.major}.{gpu_props.minor}"
+            cc_info = {
+                "8.9": "Ada Lovelace (Data Center)",
+                "8.6": "Ampere (RTX 30 series)",
+                "8.0": "Ampere (A100)",
+                "7.5": "Turing (RTX 20 series)",
+                "7.0": "Volta (V100)",
+            }
+            arch = cc_info.get(cc, f"Architecture {cc}")
+            
             gpu_info_display = mo.callout(
                 mo.md(f"""
 **🖥️ GPU Detected**: {gpu_props.name}  
 **Total Memory**: {total_gb:.2f} GB  
-**Compute Capability**: {gpu_props.major}.{gpu_props.minor}
+**Compute Capability**: {cc} _{arch}_
 
-💡 GPU metrics (utilization, memory, temperature) will be tracked during training and shown in visualizations.
+💡 **Compute Capability** is NVIDIA's GPU architecture version. Higher = newer/better features.  
+💡 GPU metrics (utilization, memory, temperature) will be tracked during training.
                 """),
                 kind="success"
             )
