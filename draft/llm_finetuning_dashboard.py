@@ -649,6 +649,28 @@ def __(train_button, device, use_mixed_precision, AutoModelForCausalLM, AutoToke
     """Step 2: Load model and tokenizer"""
     mo.stop(not train_button.value)
     
+    # Check if transformers is available
+    mo.stop(
+        AutoTokenizer is None or AutoModelForCausalLM is None,
+        mo.callout(
+            mo.md("""
+            ❌ **Transformers library not available**
+            
+            The `transformers` library failed to import. Please:
+            1. Scroll up to the installation section
+            2. Wait for the installation to complete
+            3. Refresh the page if needed
+            4. Then try starting fine-tuning again
+            
+            Or install manually:
+            ```bash
+            pip install transformers
+            ```
+            """),
+            kind="danger"
+        )
+    )
+    
     model_name = "gpt2"
     
     # Load tokenizer
