@@ -85,39 +85,74 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     if not TRANSFORMERS_AVAILABLE:
         print("🔄 Transformers not found - starting auto-installation...")
         print("   (This will also install/upgrade torchvision for compatibility)")
-        try:
-            # Install transformers and ensure torchvision compatibility
-            result = subprocess.run(
-                ["pip", "install", "--upgrade", "transformers", "torchvision"],
-                capture_output=True,
-                text=True,
-                timeout=300  # Increased timeout for two packages
-            )
-            
-            if result.returncode == 0:
-                print("✅ Transformers installed successfully!")
-                transformers_needs_restart = True
+        with mo.status.spinner(title="📦 Installing transformers library...", subtitle="This takes 1-2 minutes (includes torchvision)"):
+            try:
+                # Install transformers and ensure torchvision compatibility
+                result = subprocess.run(
+                    ["pip", "install", "--upgrade", "transformers", "torchvision"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # Increased timeout for two packages
+                )
+                
+                if result.returncode == 0:
+                    print("✅ Transformers installed successfully!")
+                    transformers_needs_restart = True
+                    transformers_install_msg = mo.callout(
+                        mo.md("""
+                        ✅ **Transformers Installed Successfully!**
+                        
+                        **⚠️ ACTION REQUIRED:** The package was installed, but Python needs to be restarted to use it.
+                        
+                        **Please refresh this page now** to restart the kernel and enable the transformers library.
+                        
+                        After refreshing, you can click "Start Fine-Tuning" and it will work.
+                        """),
+                        kind="warn"
+                    )
+                else:
+                    print(f"❌ Installation failed: {result.stderr[:200]}")
+                    transformers_install_msg = mo.callout(
+                        mo.md(f"""
+                        ❌ **Auto-installation Failed**
+                        
+                        Could not automatically install transformers.
+                        
+                        **Error**: {result.stderr[:300]}
+                        
+                        **Please install manually**:
+                        ```bash
+                        pip install transformers
+                        ```
+                        
+                        Then refresh this page.
+                        """),
+                        kind="danger"
+                    )
+            except subprocess.TimeoutExpired:
+                print("⏱️ Installation timeout")
                 transformers_install_msg = mo.callout(
                     mo.md("""
-                    ✅ **Transformers Installed Successfully!**
+                    ⏱️ **Installation Timeout**
                     
-                    **⚠️ ACTION REQUIRED:** The package was installed, but Python needs to be restarted to use it.
+                    The installation is taking longer than expected.
                     
-                    **Please refresh this page now** to restart the kernel and enable the transformers library.
+                    **Please install manually in a terminal**:
+                    ```bash
+                    pip install transformers
+                    ```
                     
-                    After refreshing, you can click "Start Fine-Tuning" and it will work.
+                    Then refresh this page.
                     """),
                     kind="warn"
                 )
-            else:
-                print(f"❌ Installation failed: {result.stderr[:200]}")
+            except Exception as e:
+                print(f"❌ Installation error: {str(e)}")
                 transformers_install_msg = mo.callout(
                     mo.md(f"""
-                    ❌ **Auto-installation Failed**
+                    ❌ **Installation Error**
                     
-                    Could not automatically install transformers.
-                    
-                    **Error**: {result.stderr[:300]}
+                    {str(e)}
                     
                     **Please install manually**:
                     ```bash
@@ -128,40 +163,6 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     """),
                     kind="danger"
                 )
-        except subprocess.TimeoutExpired:
-            print("⏱️ Installation timeout")
-            transformers_install_msg = mo.callout(
-                mo.md("""
-                ⏱️ **Installation Timeout**
-                
-                The installation is taking longer than expected.
-                
-                **Please install manually in a terminal**:
-                ```bash
-                pip install transformers
-                ```
-                
-                Then refresh this page.
-                """),
-                kind="warn"
-            )
-        except Exception as e:
-            print(f"❌ Installation error: {str(e)}")
-            transformers_install_msg = mo.callout(
-                mo.md(f"""
-                ❌ **Installation Error**
-                
-                {str(e)}
-                
-                **Please install manually**:
-                ```bash
-                pip install transformers
-                ```
-                
-                Then refresh this page.
-                """),
-                kind="danger"
-            )
     else:
         print("✅ Transformers library already available")
         transformers_install_msg = None
@@ -240,12 +241,18 @@ def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
     AutoTokenizer = None
     get_linear_schedule_with_warmup = None
     
+    # Also need to explicitly import GPT2 classes for Marimo's dependency tracking
+    GPT2LMHeadModel = None
+    GPT2TokenizerFast = None
+    
     if TRANSFORMERS_AVAILABLE:
         try:
             from transformers import (
                 AutoModelForCausalLM, 
                 AutoTokenizer, 
-                get_linear_schedule_with_warmup
+                get_linear_schedule_with_warmup,
+                GPT2LMHeadModel,
+                GPT2TokenizerFast
             )
             print("✅ Successfully imported transformers classes")
         except ImportError as e:
@@ -258,14 +265,16 @@ def __(TRANSFORMERS_AVAILABLE, transformers_install_msg):
             from transformers import (
                 AutoModelForCausalLM, 
                 AutoTokenizer, 
-                get_linear_schedule_with_warmup
+                get_linear_schedule_with_warmup,
+                GPT2LMHeadModel,
+                GPT2TokenizerFast
             )
             print("✅ Successfully imported transformers classes (fresh install)")
         except ImportError as e:
             print(f"⚠️ Transformers still not available: {str(e)[:100]}")
             pass
     
-    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup
+    return AutoModelForCausalLM, AutoTokenizer, get_linear_schedule_with_warmup, GPT2LMHeadModel, GPT2TokenizerFast
 
 
 @app.cell
