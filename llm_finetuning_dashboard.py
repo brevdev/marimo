@@ -84,29 +84,38 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     
     if not TRANSFORMERS_AVAILABLE:
         print("🔄 Transformers not found - starting auto-installation...")
-        print("   (This will also install/upgrade torchvision for compatibility)")
-        with mo.status.spinner(title="📦 Installing transformers library...", subtitle="This takes 1-2 minutes (includes torchvision)"):
+        print("   (This will also reinstall torchvision for compatibility)")
+        with mo.status.spinner(title="📦 Installing transformers library...", subtitle="This takes 2-3 minutes (includes torch ecosystem)"):
             try:
-                # Install transformers and ensure torchvision compatibility
+                # Uninstall any existing torchvision to avoid conflicts, then install fresh
+                print("   Step 1: Removing any conflicting torchvision...")
+                subprocess.run(
+                    ["pip", "uninstall", "-y", "torchvision"],
+                    capture_output=True,
+                    timeout=60
+                )
+                
+                # Install transformers and fresh torchvision
+                print("   Step 2: Installing transformers + torchvision...")
                 result = subprocess.run(
-                    ["pip", "install", "--upgrade", "transformers", "torchvision"],
+                    ["pip", "install", "transformers", "torchvision"],
                     capture_output=True,
                     text=True,
-                    timeout=300  # Increased timeout for two packages
+                    timeout=300
                 )
                 
                 if result.returncode == 0:
-                    print("✅ Transformers installed successfully!")
+                    print("✅ Transformers + torchvision installed successfully!")
                     transformers_needs_restart = True
                     transformers_install_msg = mo.callout(
                         mo.md("""
                         ✅ **Transformers Installed Successfully!**
                         
-                        **⚠️ ACTION REQUIRED:** The package was installed, but Python needs to be restarted to use it.
+                        **⚠️ ACTION REQUIRED:** Transformers and compatible torchvision were installed, but Python needs to be restarted.
                         
-                        **Please refresh this page now** to restart the kernel and enable the transformers library.
+                        **Please refresh this page now** (Cmd+R / Ctrl+R) to restart the kernel.
                         
-                        After refreshing, you can click "Start Fine-Tuning" and it will work.
+                        After refreshing, the notebook will load with all dependencies ready!
                         """),
                         kind="warn"
                     )
@@ -122,7 +131,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                         
                         **Please install manually**:
                         ```bash
-                        pip install transformers
+                        pip uninstall -y torchvision
+                        pip install transformers torchvision
                         ```
                         
                         Then refresh this page.
@@ -139,7 +149,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     
                     **Please install manually in a terminal**:
                     ```bash
-                    pip install transformers
+                    pip uninstall -y torchvision
+                    pip install transformers torchvision
                     ```
                     
                     Then refresh this page.
@@ -156,7 +167,8 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     
                     **Please install manually**:
                     ```bash
-                    pip install transformers
+                    pip uninstall -y torchvision
+                    pip install transformers torchvision
                     ```
                     
                     Then refresh this page.
