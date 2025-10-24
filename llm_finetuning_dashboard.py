@@ -84,38 +84,28 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
     
     if not TRANSFORMERS_AVAILABLE:
         print("🔄 Transformers not found - starting auto-installation...")
-        print("   (This will also reinstall torchvision for compatibility)")
-        with mo.status.spinner(title="📦 Installing transformers library...", subtitle="This takes 2-3 minutes (includes torch ecosystem)"):
+        with mo.status.spinner(title="📦 Installing transformers library...", subtitle="This takes 1-2 minutes"):
             try:
-                # Uninstall any existing torchvision to avoid conflicts, then install fresh
-                print("   Step 1: Removing any conflicting torchvision...")
-                subprocess.run(
-                    ["pip", "uninstall", "-y", "torchvision"],
-                    capture_output=True,
-                    timeout=60
-                )
-                
-                # Install transformers and fresh torchvision
-                print("   Step 2: Installing transformers + torchvision...")
+                # Install transformers (setup script should have already installed compatible torchvision)
                 result = subprocess.run(
-                    ["pip", "install", "transformers", "torchvision"],
+                    ["pip", "install", "transformers"],
                     capture_output=True,
                     text=True,
-                    timeout=300
+                    timeout=180
                 )
                 
                 if result.returncode == 0:
-                    print("✅ Transformers + torchvision installed successfully!")
+                    print("✅ Transformers installed successfully!")
                     transformers_needs_restart = True
                     transformers_install_msg = mo.callout(
                         mo.md("""
                         ✅ **Transformers Installed Successfully!**
                         
-                        **⚠️ ACTION REQUIRED:** Transformers and compatible torchvision were installed, but Python needs to be restarted.
+                        **⚠️ ACTION REQUIRED:** The package was installed, but Python needs to be restarted to use it.
                         
                         **Please refresh this page now** (Cmd+R / Ctrl+R) to restart the kernel.
                         
-                        After refreshing, the notebook will load with all dependencies ready!
+                        After refreshing, you can click "Start Fine-Tuning" and it will work!
                         """),
                         kind="warn"
                     )
@@ -131,8 +121,7 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                         
                         **Please install manually**:
                         ```bash
-                        pip uninstall -y torchvision
-                        pip install transformers torchvision
+                        pip install transformers
                         ```
                         
                         Then refresh this page.
@@ -149,8 +138,7 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     
                     **Please install manually in a terminal**:
                     ```bash
-                    pip uninstall -y torchvision
-                    pip install transformers torchvision
+                    pip install transformers
                     ```
                     
                     Then refresh this page.
@@ -167,8 +155,7 @@ def __(mo, TRANSFORMERS_AVAILABLE, subprocess):
                     
                     **Please install manually**:
                     ```bash
-                    pip uninstall -y torchvision
-                    pip install transformers torchvision
+                    pip install transformers
                     ```
                     
                     Then refresh this page.
